@@ -1,0 +1,92 @@
+{
+  "dpp_version": "1.0",
+  "passport_id": "DPP-DRN-COMP-2026",
+  "product_name": "DrainCore Composite",
+  "manufacturer": "TerraGrid India",
+  "category": "Geocomposite Drainage System",
+  "description": "High-flow geocomposite drainage mat for subsurface water management in retaining walls, tunnels, and highway subgrade applications",
+
+  "technical_properties": {
+    "core_type": "Cuspated HDPE drainage core",
+    "filter_fabric": "Nonwoven polypropylene geotextile, needle-punched",
+    "total_thickness": { "value": 12, "unit": "mm", "test_method": "ISO 9863" },
+    "compressive_strength": { "value": 250, "unit": "kPa", "test_method": "ISO 25619-2" },
+    "in_plane_flow_rate": { "value": 2.5, "unit": "l/m/s", "test_method": "ISO 12958", "gradient": 1.0, "pressure": "20 kPa" },
+    "transmissivity": { "value": 2.5e-3, "unit": "m²/s", "test_method": "ISO 12958" },
+    "mass_per_unit_area": { "value": 850, "unit": "g/m²", "test_method": "ISO 9864" },
+    "roll_width": { "value": 2.0, "unit": "m" },
+    "roll_length": { "value": 30, "unit": "m" },
+    "filter_opening_size": { "value": 0.1, "unit": "mm", "test_method": "ISO 12956" },
+    "permittivity": { "value": 0.5, "unit": "s⁻¹", "test_method": "ISO 11058" }
+  },
+
+  "working_properties": {
+    "installation_temperature_range": { "min": 0, "max": 45, "unit": "°C" },
+    "chemical_resistance": "Resistant to pH 2-12, not affected by biological degradation",
+    "uv_resistance": "Must be covered within 14 days of exposure",
+    "overlap_requirement": { "value": 150, "unit": "mm", "note": "Mechanical or heat-welded joint" },
+    "design_life": { "value": 100, "unit": "years", "condition": "buried, pH 4-9" },
+    "maximum_fill_pressure": { "value": 250, "unit": "kPa" }
+  },
+
+  "application": {
+    "primary_use": [
+      "Retaining wall drainage",
+      "Cut slope subsurface drainage",
+      "Tunnel wall drainage",
+      "Road subgrade drainage"
+    ],
+    "suitable_for": [
+      "Metro bridge abutment drainage",
+      "Highway retaining structures",
+      "Foundation drainage blankets",
+      "Green roof drainage layers"
+    ]
+  },
+
+  "standards_compliance": [
+    "ISO 12958 - In-Plane Water Flow",
+    "ISO 9864 - Mass per Unit Area",
+    "ISO 9863 - Thickness Determination",
+    "ISO 25619-2 - Compressive Behaviour",
+    "ISO 12956 - Characteristic Opening Size",
+    "ISO 11058 - Water Permeability",
+    "EN 13252 - Drainage in Geotechnical Applications"
+  ],
+
+  "packaging_and_storage": {
+    "packaging": "Core-wound roll with protective polythene wrap",
+    "storage": "Store upright on level ground, under cover from sunlight and rain",
+    "shelf_life": { "value": 12, "unit": "months", "condition": "unopened, covered storage" }
+  },
+
+  "sustainability": {
+    "recycled_content_pct": 20,
+    "carbon_footprint": { "value": 1.1, "unit": "kgCO2e/m²" },
+    "recyclable": true,
+    "environmental_declaration": "EPD pending registration"
+  },
+
+  "batch_info": {
+    "batch_number": "DRN-PPMQR-04",
+    "production_date": "2026-05-28",
+    "origin_country": "India",
+    "factory_location": "Pune, Maharashtra"
+  },
+
+  "qr_verification": {
+    "qr_code": "QR-DRN-PPMQR-04",
+    "verification_url": "https://constructask.dev/verify/DPP-DRN-COMP-2026",
+    "scan_type": "check_specification"
+  },
+
+  "source_document": {
+    "type": "Technical Data Sheet",
+    "document_title": "DrainCore Composite - Product Technical Data Sheet",
+    "revision": "Rev 5.0",
+    "date_issued": "2025-10-20",
+    "conversion_method": "manual",
+    "converted_by": "Abhijith",
+    "conversion_date": "2026-06-20"
+  }
+}

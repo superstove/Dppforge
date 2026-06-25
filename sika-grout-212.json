@@ -1,0 +1,135 @@
+{
+  "dpp_version": "1.0",
+  "passport_id": "DPP-SIKA-GROUT-212-2026",
+  "product_name": "Sika Grout 212",
+  "manufacturer": "Sika India Pvt Ltd",
+  "category": "Cementitious Grout",
+  "description": "Non-shrink cementitious grout for precision equipment base-plating, anchor grouting, and structural repairs",
+  "technical_properties": {
+    "compressive_strength_1d": {
+      "value": 25,
+      "unit": "MPa",
+      "test_method": "IS 516"
+    },
+    "compressive_strength_7d": {
+      "value": 45,
+      "unit": "MPa",
+      "test_method": "IS 516"
+    },
+    "compressive_strength_28d": {
+      "value": 60,
+      "unit": "MPa",
+      "test_method": "IS 516"
+    },
+    "flexural_strength_28d": {
+      "value": 8,
+      "unit": "MPa",
+      "test_method": "IS 516"
+    },
+    "expansion": {
+      "value": "0.0-0.1",
+      "unit": "%",
+      "test_method": "ASTM C827"
+    },
+    "flow_value": {
+      "value": 130,
+      "unit": "%",
+      "test_method": "ASTM C230"
+    },
+    "density_fresh": {
+      "value": 2.2,
+      "unit": "g/cm³"
+    },
+    "water_demand": {
+      "value": "3.0-3.5",
+      "unit": "litres per 25kg bag"
+    }
+  },
+  "working_properties": {
+    "pot_life": {
+      "value": 30,
+      "unit": "minutes"
+    },
+    "initial_set": {
+      "value": 4,
+      "unit": "hours",
+      "test_method": "IS 5513"
+    },
+    "final_set": {
+      "value": 6,
+      "unit": "hours",
+      "test_method": "IS 5513"
+    },
+    "application_temperature": {
+      "min": 10,
+      "max": 40,
+      "unit": "°C"
+    },
+    "minimum_section_thickness": {
+      "value": 10,
+      "unit": "mm"
+    },
+    "maximum_section_thickness": {
+      "value": 100,
+      "unit": "mm"
+    }
+  },
+  "application": {
+    "primary_use": [
+      "Equipment base-plating",
+      "Anchor bolt grouting",
+      "Column jacketing",
+      "Structural repairs"
+    ],
+    "suitable_for": [
+      "Bridge bearing pads",
+      "Metro pier bases",
+      "Industrial machine foundations",
+      "Precast joint filling"
+    ]
+  },
+  "standards_compliance": [
+    "IS 516 - Compressive Strength",
+    "ASTM C827 - Volume Change",
+    "ASTM C230 - Flow Test",
+    "IS 5513 - Setting Time",
+    "EN 1504-6 - Grouting"
+  ],
+  "packaging_and_storage": {
+    "packaging": "25 kg moisture-proof bags",
+    "storage": "Store in dry conditions, off the ground, at 5-35°C",
+    "shelf_life": {
+      "value": 9,
+      "unit": "months",
+      "condition": "unopened, original packaging"
+    }
+  },
+  "sustainability": {
+    "recycled_content_pct": 8,
+    "carbon_footprint": {
+      "value": 0.52,
+      "unit": "kgCO2e/kg"
+    },
+    "recyclable": true
+  },
+  "batch_info": {
+    "batch_number": "SIKA-G212-IN-0622",
+    "production_date": "2026-04-15",
+    "origin_country": "India",
+    "factory_location": "Goa, India"
+  },
+  "qr_verification": {
+    "qr_code": "QR-SIKA-GROUT-212-2026",
+    "verification_url": "https://constructask.vercel.app/verify/DPP-SIKA-GROUT-212-2026",
+    "scan_type": "check_specification"
+  },
+  "source_document": {
+    "type": "Technical Data Sheet",
+    "document_title": "Sika Grout 212 Non-Shrink Cementitious Grout - TDS",
+    "revision": "Rev 5.0",
+    "date_issued": "2025-11-20",
+    "conversion_method": "manual",
+    "converted_by": "Abhijith",
+    "conversion_date": "2026-06-25"
+  }
+}

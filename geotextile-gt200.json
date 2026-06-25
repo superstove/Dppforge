@@ -1,0 +1,95 @@
+{
+  "dpp_version": "1.0",
+  "passport_id": "DPP-GTX-200-2026",
+  "product_name": "GeoTextile GT-200",
+  "manufacturer": "TerraGrid India",
+  "category": "Nonwoven Geotextile",
+  "description": "Needle-punched nonwoven geotextile for filtration, separation, and protection in civil engineering and infrastructure applications",
+
+  "technical_properties": {
+    "fabric_type": "Nonwoven, needle-punched",
+    "polymer_type": "Polypropylene (PP), UV-stabilized",
+    "mass_per_unit_area": { "value": 200, "unit": "g/m²", "test_method": "ISO 9864" },
+    "thickness_at_2kPa": { "value": 1.8, "unit": "mm", "test_method": "ISO 9863-1" },
+    "tensile_strength_md": { "value": 12, "unit": "kN/m", "test_method": "ISO 10319" },
+    "tensile_strength_cmd": { "value": 12, "unit": "kN/m", "test_method": "ISO 10319" },
+    "elongation_at_max_load": { "value": 60, "unit": "%", "test_method": "ISO 10319" },
+    "cbt_strength": { "value": 2.2, "unit": "kN", "test_method": "ISO 12236" },
+    "opening_size_o90": { "value": 0.09, "unit": "mm", "test_method": "ISO 12956" },
+    "permittivity": { "value": 0.8, "unit": "s⁻¹", "test_method": "ISO 11058" },
+    "roll_width": { "value": 4.5, "unit": "m" },
+    "roll_length": { "value": 100, "unit": "m" },
+    "color": "White"
+  },
+
+  "working_properties": {
+    "installation_temperature_range": { "min": -10, "max": 50, "unit": "°C" },
+    "uv_resistance": "Must be covered within 7 days of exposure",
+    "chemical_resistance": "Resistant to pH 2-13, biologically inert",
+    "overlap_requirement": { "value": 300, "unit": "mm", "note": "Minimum overlap for unsewn joints" },
+    "design_life": { "value": 100, "unit": "years", "condition": "permanently buried, pH 4-9" },
+    "seam_method": "Sewing or overlapping per site specification"
+  },
+
+  "application": {
+    "primary_use": [
+      "Filtration in drainage systems",
+      "Separation between soil layers",
+      "Protection of geomembranes",
+      "Erosion control under riprap"
+    ],
+    "suitable_for": [
+      "Metro bridge foundation drainage",
+      "Highway subgrade separation",
+      "Retaining wall filter layers",
+      "Landfill liner protection"
+    ]
+  },
+
+  "standards_compliance": [
+    "ISO 9864 - Mass per Unit Area",
+    "ISO 9863-1 - Thickness",
+    "ISO 10319 - Tensile Properties",
+    "ISO 12236 - CBR Puncture Resistance",
+    "ISO 12956 - Characteristic Opening Size",
+    "ISO 11058 - Water Permeability Normal to Plane",
+    "EN 13252 - Drainage Applications",
+    "BIS IS 14986 - Geotextiles (Indian Standard)"
+  ],
+
+  "packaging_and_storage": {
+    "packaging": "Core-wound roll with LDPE protective sleeve",
+    "storage": "Store in shade, protect from direct sunlight and moisture",
+    "shelf_life": { "value": 12, "unit": "months", "condition": "unopened, shaded dry storage" }
+  },
+
+  "sustainability": {
+    "recycled_content_pct": 25,
+    "carbon_footprint": { "value": 0.9, "unit": "kgCO2e/m²" },
+    "recyclable": true,
+    "environmental_declaration": "Self-declared per ISO 14021"
+  },
+
+  "batch_info": {
+    "batch_number": "GTX-PPMQR-31",
+    "production_date": "2026-04-10",
+    "origin_country": "India",
+    "factory_location": "Pune, Maharashtra"
+  },
+
+  "qr_verification": {
+    "qr_code": "QR-GTX-PPMQR-31",
+    "verification_url": "https://constructask.dev/verify/DPP-GTX-200-2026",
+    "scan_type": "check_specification"
+  },
+
+  "source_document": {
+    "type": "Technical Data Sheet",
+    "document_title": "GeoTextile GT-200 Nonwoven - Technical Data Sheet",
+    "revision": "Rev 3.0",
+    "date_issued": "2025-06-15",
+    "conversion_method": "manual",
+    "converted_by": "Abhijith",
+    "conversion_date": "2026-06-20"
+  }
+}

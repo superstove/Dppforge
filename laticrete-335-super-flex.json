@@ -1,0 +1,118 @@
+{
+  "dpp_version": "1.0",
+  "passport_id": "DPP-LATICRETE-335-SUPER--2026",
+  "product_name": "LATICRETE 335 Super Flex",
+  "manufacturer": "LATICRETE International",
+  "category": "Tile Adhesive",
+  "description": "High-performance flexible thin-set adhesive for ceramic, porcelain, and natural stone tiles on floors and walls",
+  "technical_properties": {
+    "open_time": {
+      "value": 30,
+      "unit": "minutes",
+      "test_method": "EN 1346"
+    },
+    "pot_life": {
+      "value": 4,
+      "unit": "hours"
+    },
+    "tensile_adhesion_strength": {
+      "value": 1.5,
+      "unit": "MPa",
+      "test_method": "EN 1348"
+    },
+    "slip_resistance": {
+      "value": "<0.5",
+      "unit": "mm",
+      "test_method": "EN 1308"
+    },
+    "mixing_ratio": {
+      "value": "5.5-6.0",
+      "unit": "litres per 20kg bag"
+    },
+    "coverage": {
+      "value": "3-5",
+      "unit": "kg/m²"
+    },
+    "bed_thickness": {
+      "min": 3,
+      "max": 10,
+      "unit": "mm"
+    }
+  },
+  "working_properties": {
+    "working_time": {
+      "value": 30,
+      "unit": "minutes"
+    },
+    "foot_traffic": {
+      "value": 24,
+      "unit": "hours"
+    },
+    "full_cure": {
+      "value": 28,
+      "unit": "days"
+    },
+    "application_temperature": {
+      "min": 5,
+      "max": 35,
+      "unit": "°C"
+    }
+  },
+  "application": {
+    "primary_use": [
+      "Interior/exterior floor tiling",
+      "Wall tiling",
+      "Swimming pool tiling",
+      "Heated floor systems"
+    ],
+    "suitable_for": [
+      "Commercial buildings",
+      "Residential construction",
+      "Wet areas and bathrooms",
+      "External facades"
+    ]
+  },
+  "standards_compliance": [
+    "EN 12004 C2TES1",
+    "ISO 13007",
+    "ANSI A118.4ET",
+    "ANSI A118.11"
+  ],
+  "packaging_and_storage": {
+    "packaging": "20 kg moisture-resistant paper bags on shrink-wrapped pallets",
+    "storage": "Store in dry area between 5-35°C, away from moisture",
+    "shelf_life": {
+      "value": 12,
+      "unit": "months",
+      "condition": "unopened, original packaging"
+    }
+  },
+  "sustainability": {
+    "recycled_content_pct": 5,
+    "carbon_footprint": {
+      "value": 0.45,
+      "unit": "kgCO2e/kg"
+    },
+    "recyclable": true
+  },
+  "batch_info": {
+    "batch_number": "LAT-335-B2026-0801",
+    "production_date": "2026-05-20",
+    "origin_country": "USA",
+    "factory_location": "Bethany, Connecticut"
+  },
+  "qr_verification": {
+    "qr_code": "QR-LATICRETE-335-SUPER--2026",
+    "verification_url": "https://constructask.vercel.app/verify/DPP-LATICRETE-335-SUPER--2026",
+    "scan_type": "check_specification"
+  },
+  "source_document": {
+    "type": "Technical Data Sheet",
+    "document_title": "LATICRETE 335 Super Flex Thin-Set - TDS",
+    "revision": "Rev 8.2",
+    "date_issued": "2025-03-01",
+    "conversion_method": "manual",
+    "converted_by": "Abhijith",
+    "conversion_date": "2026-06-25"
+  }
+}

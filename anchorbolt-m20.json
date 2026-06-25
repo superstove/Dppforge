@@ -1,0 +1,91 @@
+{
+  "dpp_version": "1.0",
+  "passport_id": "DPP-ANC-M20-2026",
+  "product_name": "AnchorBolt M20",
+  "manufacturer": "CoreBuild Materials",
+  "category": "Structural Anchoring System",
+  "description": "High-tensile steel anchor bolt for rock anchoring, retaining wall tie-backs, and structural connections in infrastructure projects",
+
+  "technical_properties": {
+    "bolt_diameter": { "value": 20, "unit": "mm" },
+    "bolt_length_range": { "min": 300, "max": 6000, "unit": "mm" },
+    "thread_type": "ISO Metric M20, coarse pitch 2.5mm",
+    "steel_grade": "Grade 8.8 per ISO 898-1",
+    "yield_strength": { "value": 640, "unit": "MPa", "test_method": "ISO 898-1" },
+    "ultimate_tensile_strength": { "value": 800, "unit": "MPa", "test_method": "ISO 898-1" },
+    "elongation_at_break": { "value": 12, "unit": "%", "test_method": "ISO 898-1" },
+    "hardness": { "value": "22-32", "unit": "HRC", "test_method": "ISO 898-1" },
+    "surface_finish": "Hot-dip galvanized per ISO 1461",
+    "zinc_coating_thickness": { "value": 85, "unit": "µm", "min_spec": 65 },
+    "proof_load": { "value": 203, "unit": "kN" },
+    "weight_per_unit": { "value": 2.47, "unit": "kg/m" }
+  },
+
+  "working_properties": {
+    "operating_temperature_range": { "min": -40, "max": 150, "unit": "°C" },
+    "corrosion_protection": "Hot-dip galvanized; suitable for Class C3-C4 environments (ISO 12944)",
+    "torque_value": { "value": 520, "unit": "Nm", "condition": "lubricated" },
+    "embedment_depth_min": { "value": 200, "unit": "mm", "condition": "in concrete grade M25 or higher" },
+    "reusable": false
+  },
+
+  "application": {
+    "primary_use": [
+      "Rock slope anchoring",
+      "Retaining wall tie-back",
+      "Bridge bearing connections",
+      "Foundation bolt-down"
+    ],
+    "suitable_for": [
+      "Metro bridge pier foundations",
+      "Highway slope stabilization",
+      "Tunnel portal structures",
+      "Heavy equipment anchoring"
+    ]
+  },
+
+  "standards_compliance": [
+    "ISO 898-1 - Mechanical Properties of Fasteners",
+    "ISO 1461 - Hot-Dip Galvanizing",
+    "ISO 12944 - Corrosion Protection",
+    "IS 1367 - Technical Supply Conditions for Fasteners (BIS)",
+    "EN 1090-2 - Execution of Steel Structures",
+    "ASTM A325 - Structural Bolts (equivalent reference)"
+  ],
+
+  "packaging_and_storage": {
+    "packaging": "Bundled in rust-inhibitor paper, packed in wooden crates",
+    "storage": "Indoor dry storage, away from moisture and corrosive chemicals",
+    "shelf_life": { "value": 36, "unit": "months", "condition": "original packaging, indoor storage" }
+  },
+
+  "sustainability": {
+    "recycled_content_pct": 35,
+    "carbon_footprint": { "value": 2.4, "unit": "kgCO2e/unit" },
+    "recyclable": true,
+    "environmental_declaration": "Material test certificate per EN 10204 Type 3.1"
+  },
+
+  "batch_info": {
+    "batch_number": "ANC-PPMQR-16",
+    "production_date": "2026-05-08",
+    "origin_country": "India",
+    "factory_location": "Jamshedpur, Jharkhand"
+  },
+
+  "qr_verification": {
+    "qr_code": "QR-ANC-PPMQR-16",
+    "verification_url": "https://constructask.dev/verify/DPP-ANC-M20-2026",
+    "scan_type": "warehouse_receipt"
+  },
+
+  "source_document": {
+    "type": "Technical Data Sheet",
+    "document_title": "AnchorBolt M20 Grade 8.8 - Technical Data Sheet",
+    "revision": "Rev 2.0",
+    "date_issued": "2025-08-10",
+    "conversion_method": "manual",
+    "converted_by": "Abhijith",
+    "conversion_date": "2026-06-20"
+  }
+}

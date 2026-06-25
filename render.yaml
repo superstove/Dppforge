@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: dpp-forge
+    runtime: python
+    buildCommand: |
+      pip install -r backend/requirements.txt
+      npm install && npm run build
+      mkdir -p backend/static && cp -r dist/* backend/static/
+    startCommand: cd backend && gunicorn main:app -w 2 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: CONSTRUCTASK_VERIFY_URL
+        value: https://constructask.vercel.app

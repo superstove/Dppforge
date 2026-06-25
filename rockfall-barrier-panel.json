@@ -1,0 +1,91 @@
+{
+  "dpp_version": "1.0",
+  "passport_id": "DPP-RBP-NH66-2026",
+  "product_name": "Rockfall Barrier Panel",
+  "manufacturer": "GeoStruct Materials",
+  "category": "Rockfall Protection System",
+  "description": "Flexible rockfall barrier panel for highway cut-slope protection, designed to absorb and redirect kinetic energy from falling rock debris",
+
+  "technical_properties": {
+    "energy_absorption_capacity": { "value": 500, "unit": "kJ", "test_method": "ETAG 027 / EAD 340059" },
+    "panel_height": { "value": 3.0, "unit": "m" },
+    "panel_span": { "value": 10, "unit": "m" },
+    "net_mesh_type": "Double-twisted hexagonal wire mesh (8x10 cm)",
+    "wire_diameter": { "value": 3.0, "unit": "mm" },
+    "wire_material": "High-tensile steel, Zn-Al coated (Galfan)",
+    "wire_tensile_strength": { "value": 1770, "unit": "MPa", "test_method": "EN 10264-2" },
+    "coating_type": "Zn-5%Al alloy (Galfan) per EN 10244-2",
+    "coating_mass": { "value": 260, "unit": "g/m²", "min_spec": 245 },
+    "post_material": "HEB 160 steel profile, hot-dip galvanized",
+    "brake_elements": "Ring-net energy dissipators",
+    "maximum_rock_diameter": { "value": 0.75, "unit": "m" }
+  },
+
+  "working_properties": {
+    "service_temperature_range": { "min": -30, "max": 70, "unit": "°C" },
+    "corrosion_protection_class": "C4 (high) per ISO 12944",
+    "design_life": { "value": 50, "unit": "years", "condition": "standard atmospheric environment" },
+    "inspection_interval": { "value": 6, "unit": "months", "note": "Visual inspection after every major rockfall event" },
+    "installation_slope_range": "45° to 90° (vertical cut slopes)"
+  },
+
+  "application": {
+    "primary_use": [
+      "Highway cut-slope rockfall protection",
+      "Railway corridor rockfall interception",
+      "Quarry face protection",
+      "Mountain road safety barriers"
+    ],
+    "suitable_for": [
+      "NH66 Highway corridor (Kerala Western Ghats)",
+      "Mountain highway cut sections",
+      "Tunnel portal protection zones",
+      "Landslide-prone slope faces"
+    ]
+  },
+
+  "standards_compliance": [
+    "ETAG 027 / EAD 340059 - Rockfall Protection Kits",
+    "EN 10264-2 - Steel Wire for Ropes",
+    "EN 10244-2 - Zinc and Zinc-Alloy Coatings",
+    "ISO 12944 - Corrosion Protection of Steel Structures",
+    "EN 1090-2 - Execution of Steel Structures",
+    "ETA Conformity Certificate (TUV Rheinland)"
+  ],
+
+  "packaging_and_storage": {
+    "packaging": "Panels folded and bundled on timber pallets, posts packed separately",
+    "storage": "Outdoor storage acceptable; avoid contact with bare soil",
+    "shelf_life": { "value": 60, "unit": "months", "condition": "galvanized components, outdoor covered storage" }
+  },
+
+  "sustainability": {
+    "recycled_content_pct": 45,
+    "carbon_footprint": { "value": 48.5, "unit": "kgCO2e/panel" },
+    "recyclable": true,
+    "environmental_declaration": "Steel recyclability certified per EN ISO 14025"
+  },
+
+  "batch_info": {
+    "batch_number": "NH66-RBP-11",
+    "production_date": "2026-03-10",
+    "origin_country": "India",
+    "factory_location": "Kolkata, West Bengal"
+  },
+
+  "qr_verification": {
+    "qr_code": "QR-NH66-RBP-11",
+    "verification_url": "https://constructask.dev/verify/DPP-RBP-NH66-2026",
+    "scan_type": "confirm_use"
+  },
+
+  "source_document": {
+    "type": "Technical Data Sheet",
+    "document_title": "Rockfall Barrier Panel 500kJ - Technical Data Sheet",
+    "revision": "Rev 6.1",
+    "date_issued": "2025-07-01",
+    "conversion_method": "manual",
+    "converted_by": "Abhijith",
+    "conversion_date": "2026-06-20"
+  }
+}

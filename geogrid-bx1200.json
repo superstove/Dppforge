@@ -1,0 +1,87 @@
+{
+  "dpp_version": "1.0",
+  "passport_id": "DPP-GEO-BX1200-2026",
+  "product_name": "Geogrid BX1200",
+  "manufacturer": "Delta GeoSystems",
+  "category": "Geosynthetic Reinforcement",
+  "description": "Biaxial geogrid for soil reinforcement and stabilization in highway and metro infrastructure projects",
+
+  "technical_properties": {
+    "tensile_strength_md": { "value": 12, "unit": "kN/m", "test_method": "ISO 10319" },
+    "tensile_strength_cmd": { "value": 12, "unit": "kN/m", "test_method": "ISO 10319" },
+    "elongation_at_break": { "value": 10, "unit": "%", "test_method": "ISO 10319" },
+    "aperture_size": { "value": "25 x 25", "unit": "mm" },
+    "roll_width": { "value": 3.95, "unit": "m" },
+    "roll_length": { "value": 50, "unit": "m" },
+    "polymer_type": "Polypropylene (PP)",
+    "color": "Black",
+    "mass_per_unit_area": { "value": 200, "unit": "g/m²", "test_method": "ISO 9864" },
+    "junction_efficiency": { "value": 93, "unit": "%" }
+  },
+
+  "working_properties": {
+    "installation_temperature_range": { "min": -20, "max": 60, "unit": "°C" },
+    "uv_resistance": "Stabilized for 500+ hours (ASTM D4355)",
+    "chemical_resistance": "Resistant to pH 2-13",
+    "design_life": { "value": 120, "unit": "years", "condition": "in soil, pH 4-9" }
+  },
+
+  "application": {
+    "primary_use": [
+      "Subgrade stabilization",
+      "Base reinforcement",
+      "Slope reinforcement",
+      "Retaining wall reinforcement"
+    ],
+    "suitable_for": [
+      "Highway foundations",
+      "Metro bridge abutments",
+      "Railway embankments",
+      "Industrial floor slabs"
+    ]
+  },
+
+  "standards_compliance": [
+    "ISO 10319 - Tensile Testing",
+    "ISO 9864 - Mass per Unit Area",
+    "EN 13249 - Roads and Trafficked Areas",
+    "ASTM D4355 - UV Resistance",
+    "BIS IS 16014 - Geosynthetics for Soil Reinforcement"
+  ],
+
+  "packaging_and_storage": {
+    "packaging": "Wrapped in UV-protective polythene sleeve",
+    "storage": "Store in dry, shaded area away from direct sunlight",
+    "shelf_life": { "value": 24, "unit": "months", "condition": "unopened, in original packaging" }
+  },
+
+  "sustainability": {
+    "recycled_content_pct": 15,
+    "carbon_footprint": { "value": 1.8, "unit": "kgCO2e/m²" },
+    "recyclable": true,
+    "environmental_declaration": "EPD verified per EN 15804"
+  },
+
+  "batch_info": {
+    "batch_number": "GEO-PPMQR-22",
+    "production_date": "2026-05-15",
+    "origin_country": "India",
+    "factory_location": "Hyderabad, Telangana"
+  },
+
+  "qr_verification": {
+    "qr_code": "QR-GEO-PPMQR-22",
+    "verification_url": "https://constructask.dev/verify/DPP-GEO-BX1200-2026",
+    "scan_type": "check_specification"
+  },
+
+  "source_document": {
+    "type": "Technical Data Sheet",
+    "document_title": "Geogrid BX1200 - Product Technical Data Sheet",
+    "revision": "Rev 4.2",
+    "date_issued": "2025-11-01",
+    "conversion_method": "manual",
+    "converted_by": "Abhijith",
+    "conversion_date": "2026-06-20"
+  }
+}

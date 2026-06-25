@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Digital Product Passport Schema for Construction Materials",
+  "description": "Standardized schema for converting Technical Data Sheets (TDS) into machine-readable Digital Product Passport (DPP) JSON format for the ConstructAsk platform",
+  "version": "1.0",
+  "type": "object",
+  "required": [
+    "dpp_version",
+    "passport_id",
+    "product_name",
+    "manufacturer",
+    "category",
+    "technical_properties",
+    "standards_compliance",
+    "batch_info",
+    "source_document"
+  ],
+  "properties": {
+    "dpp_version": {
+      "type": "string",
+      "description": "Schema version identifier"
+    },
+    "passport_id": {
+      "type": "string",
+      "pattern": "^DPP-",
+      "description": "Unique passport identifier with DPP- prefix"
+    },
+    "product_name": {
+      "type": "string",
+      "description": "Commercial product name as stated on TDS"
+    },
+    "manufacturer": {
+      "type": "string",
+      "description": "Manufacturing company name"
+    },
+    "category": {
+      "type": "string",
+      "description": "Product category classification"
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief product description and primary function"
+    },
+    "technical_properties": {
+      "type": "object",
+      "description": "Engineering parameters extracted from TDS. Each property should include value, unit, and test_method where applicable"
+    },
+    "working_properties": {
+      "type": "object",
+      "description": "Installation and service conditions"
+    },
+    "application": {
+      "type": "object",
+      "properties": {
+        "primary_use": { "type": "array", "items": { "type": "string" } },
+        "suitable_for": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "standards_compliance": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of applicable standards (ISO, EN, BIS, ASTM)"
+    },
+    "packaging_and_storage": {
+      "type": "object",
+      "description": "Packaging, storage requirements, and shelf life"
+    },
+    "sustainability": {
+      "type": "object",
+      "description": "Environmental and sustainability data including carbon footprint"
+    },
+    "batch_info": {
+      "type": "object",
+      "required": ["batch_number", "production_date", "origin_country"],
+      "description": "Production batch traceability data"
+    },
+    "qr_verification": {
+      "type": "object",
+      "description": "QR code and verification URL for ConstructAsk integration"
+    },
+    "source_document": {
+      "type": "object",
+      "required": ["type", "conversion_method", "converted_by", "conversion_date"],
+      "description": "Provenance of the original TDS document and conversion metadata"
+    }
+  }
+}

@@ -1,0 +1,90 @@
+{
+  "dpp_version": "1.0",
+  "passport_id": "DPP-SSP-600-2026",
+  "product_name": "SlopeShield Pro 600",
+  "manufacturer": "GeoStruct Materials",
+  "category": "Erosion Control Reinforcement",
+  "description": "High-performance slope protection geogrid for cut slopes, embankments, and retaining structures in highway and infrastructure projects",
+
+  "technical_properties": {
+    "tensile_strength_md": { "value": 60, "unit": "kN/m", "test_method": "ISO 10319" },
+    "tensile_strength_cmd": { "value": 30, "unit": "kN/m", "test_method": "ISO 10319" },
+    "elongation_at_break_md": { "value": 11, "unit": "%", "test_method": "ISO 10319" },
+    "elongation_at_break_cmd": { "value": 13, "unit": "%", "test_method": "ISO 10319" },
+    "aperture_size": { "value": "16 x 16", "unit": "mm" },
+    "roll_width": { "value": 3.0, "unit": "m" },
+    "roll_length": { "value": 50, "unit": "m" },
+    "polymer_type": "High-Density Polyethylene (HDPE)",
+    "color": "Black",
+    "mass_per_unit_area": { "value": 600, "unit": "g/m²", "test_method": "ISO 9864" },
+    "creep_resistance": { "value": 55, "unit": "% of ultimate", "test_method": "ISO 13431", "duration": "10000 hours" }
+  },
+
+  "working_properties": {
+    "installation_temperature_range": { "min": -10, "max": 50, "unit": "°C" },
+    "uv_resistance": "Stabilized, retains >70% strength after 1000 hours (ASTM D4355)",
+    "chemical_resistance": "Resistant to acids, alkalis, and biological degradation",
+    "design_life": { "value": 100, "unit": "years", "condition": "buried in soil, pH 4-9" },
+    "minimum_fill_cover": { "value": 150, "unit": "mm" }
+  },
+
+  "application": {
+    "primary_use": [
+      "Cut slope stabilization",
+      "Embankment reinforcement",
+      "Retaining wall reinforcement",
+      "Steep slope vegetation support"
+    ],
+    "suitable_for": [
+      "National highway slopes",
+      "Railway cuttings",
+      "Bridge abutments",
+      "Landslide remediation zones"
+    ]
+  },
+
+  "standards_compliance": [
+    "ISO 10319 - Tensile Properties",
+    "ISO 9864 - Mass per Unit Area",
+    "ISO 13431 - Creep Resistance",
+    "EN 13251 - Geotextiles for Earthworks",
+    "ASTM D4355 - UV Degradation",
+    "BIS IS 16014 - Geosynthetics"
+  ],
+
+  "packaging_and_storage": {
+    "packaging": "Core-wound roll, UV-protective wrap",
+    "storage": "Store horizontally on level surface, covered from sunlight",
+    "shelf_life": { "value": 18, "unit": "months", "condition": "unopened, original wrapping" }
+  },
+
+  "sustainability": {
+    "recycled_content_pct": 10,
+    "carbon_footprint": { "value": 2.4, "unit": "kgCO2e/m²" },
+    "recyclable": true,
+    "environmental_declaration": "Self-declared per ISO 14021"
+  },
+
+  "batch_info": {
+    "batch_number": "GRID-BATCH-07",
+    "production_date": "2026-04-22",
+    "origin_country": "India",
+    "factory_location": "Chennai, Tamil Nadu"
+  },
+
+  "qr_verification": {
+    "qr_code": "QR-SSP-07",
+    "verification_url": "https://constructask.dev/verify/DPP-SSP-600-2026",
+    "scan_type": "check_specification"
+  },
+
+  "source_document": {
+    "type": "Technical Data Sheet",
+    "document_title": "SlopeShield Pro 600 - Technical Data Sheet",
+    "revision": "Rev 3.1",
+    "date_issued": "2025-09-15",
+    "conversion_method": "manual",
+    "converted_by": "Abhijith",
+    "conversion_date": "2026-06-20"
+  }
+}

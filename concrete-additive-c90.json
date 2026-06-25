@@ -1,0 +1,104 @@
+{
+  "dpp_version": "1.0",
+  "passport_id": "DPP-CAD-C90-2026",
+  "product_name": "Concrete Additive C-90",
+  "manufacturer": "CoreBuild Materials",
+  "category": "Concrete Admixture",
+  "description": "High-range water-reducing admixture (superplasticizer) for producing high-performance concrete with improved workability and strength",
+
+  "technical_properties": {
+    "chemical_base": "Polycarboxylate Ether (PCE)",
+    "appearance": "Dark brown liquid",
+    "specific_gravity": { "value": 1.08, "unit": "g/cm³", "tolerance": "± 0.02", "test_method": "IS 9103" },
+    "ph_value": { "value": 6.5, "unit": "pH", "tolerance": "± 1.0" },
+    "solid_content": { "value": 30, "unit": "%", "tolerance": "± 2%" },
+    "chloride_content": { "value": "<0.1", "unit": "%", "note": "Compliant with IS 9103 limit" },
+    "alkali_content": { "value": "<1.5", "unit": "%", "note": "Na2O equivalent" },
+    "water_reduction": { "value": "20-30", "unit": "%", "test_method": "IS 9103" },
+    "air_entrainment": { "value": "<2", "unit": "%", "test_method": "IS 9103" }
+  },
+
+  "working_properties": {
+    "dosage_range": { "min": 0.5, "max": 2.0, "unit": "% by weight of cement" },
+    "recommended_dosage": { "value": 0.8, "unit": "% by weight of cement", "condition": "M40 grade concrete" },
+    "slump_retention": { "value": 60, "unit": "minutes", "condition": "at 30°C ambient" },
+    "compatibility": "Compatible with OPC, PPC, PSC cements (IS 269, IS 1489, IS 455)",
+    "mixing_method": "Add to mixing water or directly to fresh concrete during mixing",
+    "storage_temperature_range": { "min": 5, "max": 40, "unit": "°C" },
+    "shelf_life_opened": { "value": 6, "unit": "months" }
+  },
+
+  "performance_enhancement": {
+    "compressive_strength_7d": { "increase": "20-30", "unit": "%", "vs_control": "without admixture" },
+    "compressive_strength_28d": { "increase": "15-25", "unit": "%", "vs_control": "without admixture" },
+    "setting_time_effect": "Slight retardation (30-60 min initial set)",
+    "suitable_concrete_grades": ["M30", "M40", "M50", "M60", "M70"]
+  },
+
+  "application": {
+    "primary_use": [
+      "High-performance concrete production",
+      "Self-compacting concrete (SCC)",
+      "Precast concrete elements",
+      "Ready-mix concrete"
+    ],
+    "suitable_for": [
+      "Metro bridge pier concrete",
+      "Foundation pile concrete",
+      "Structural columns and beams",
+      "Tunnel lining concrete"
+    ]
+  },
+
+  "standards_compliance": [
+    "IS 9103 - Concrete Admixtures (BIS)",
+    "EN 934-2 - Admixtures for Concrete",
+    "ASTM C494 - Chemical Admixtures for Concrete (Type F)",
+    "IS 456 - Code of Practice for Plain and Reinforced Concrete"
+  ],
+
+  "packaging_and_storage": {
+    "packaging": "200L HDPE drums or 1000L IBC totes",
+    "storage": "Store in cool, dry place; protect from freezing and direct sunlight",
+    "shelf_life": { "value": 12, "unit": "months", "condition": "unopened, 5-40°C storage" }
+  },
+
+  "safety": {
+    "hazard_classification": "Non-hazardous per GHS",
+    "skin_contact": "Mild irritant; wash with soap and water",
+    "eye_contact": "Flush with clean water for 15 minutes",
+    "ppe_required": ["Safety gloves", "Safety goggles"],
+    "spill_procedure": "Contain and absorb with inert material; do not discharge into drains"
+  },
+
+  "sustainability": {
+    "recycled_content_pct": 0,
+    "carbon_footprint": { "value": 0.35, "unit": "kgCO2e/litre" },
+    "recyclable": false,
+    "environmental_declaration": "Reduces overall concrete carbon footprint by enabling lower cement content",
+    "cement_reduction_potential": "10-15% cement savings at equivalent strength"
+  },
+
+  "batch_info": {
+    "batch_number": "CAD-PPMQR-90",
+    "production_date": "2026-06-01",
+    "origin_country": "India",
+    "factory_location": "Vadodara, Gujarat"
+  },
+
+  "qr_verification": {
+    "qr_code": "QR-CAD-PPMQR-90",
+    "verification_url": "https://constructask.dev/verify/DPP-CAD-C90-2026",
+    "scan_type": "check_specification"
+  },
+
+  "source_document": {
+    "type": "Technical Data Sheet",
+    "document_title": "Concrete Additive C-90 PCE Superplasticizer - TDS",
+    "revision": "Rev 2.3",
+    "date_issued": "2026-01-15",
+    "conversion_method": "manual",
+    "converted_by": "Abhijith",
+    "conversion_date": "2026-06-20"
+  }
+}
