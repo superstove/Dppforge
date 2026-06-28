@@ -12,28 +12,52 @@ import { UploadView } from './views/UploadView';
 import { ReviewView } from './views/ReviewView';
 import { SuccessView } from './views/SuccessView';
 import { PassportsView } from './views/PassportsView';
+import { PublicPassportView } from './views/PublicPassportView';
+import { SettingsView } from './views/SettingsView';
+import type { ViewName, ConversionResult, SaveResult } from './types';
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<string>('home');
-  const [conversionResult, setConversionResult] = useState<any>(null);
-  const [savedResult, setSavedResult] = useState<any>(null);
+  const publicPassportId = new URLSearchParams(window.location.search).get('passport');
+  const [currentView, setCurrentView] = useState<ViewName>('home');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [conversionResult, setConversionResult] = useState<ConversionResult | null>(null);
+  const [savedResult, setSavedResult] = useState<SaveResult | null>(null);
 
-  const handleReview = (data: any) => {
+  const handleReview = (data: ConversionResult) => {
     setConversionResult(data);
     setCurrentView('review');
   };
 
-  const handleSaved = (data: any) => {
+  const handleSaved = (data: SaveResult) => {
     setSavedResult(data);
     setCurrentView('saved');
   };
 
+  if (publicPassportId) {
+    return <PublicPassportView passportId={publicPassportId} />;
+  }
+
   return (
-    <div className="flex h-screen bg-black text-[#e4e6ed] font-sans overflow-hidden selection:bg-white/30">
-      <Sidebar currentView={currentView} setView={setCurrentView} />
+    <div className="flex h-[100svh] bg-black text-[#e4e6ed] font-sans overflow-hidden selection:bg-white/30">
+      <Sidebar
+        currentView={currentView}
+        setView={setCurrentView}
+        isOpen={sidebarOpen}
+        isCollapsed={sidebarCollapsed}
+        onClose={() => setSidebarOpen(false)}
+        onCollapse={() => setSidebarCollapsed(true)}
+      />
       
       <div className="flex-1 flex flex-col relative overflow-hidden bg-[#0a0b10]">
-        <TopNav setView={setCurrentView} />
+        <TopNav
+          setView={setCurrentView}
+          onOpenSidebar={() => {
+            setSidebarCollapsed(false);
+            setSidebarOpen(true);
+          }}
+          sidebarCollapsed={sidebarCollapsed}
+        />
         
         <main className="flex-1 overflow-y-auto relative z-10 custom-scrollbar">
           {currentView === 'home' && <HomeView setView={setCurrentView} />}
@@ -46,6 +70,7 @@ export default function App() {
              <SuccessView setView={setCurrentView} data={savedResult} />
           )}
           {currentView === 'passports' && <PassportsView />}
+          {currentView === 'settings' && <SettingsView />}
         </main>
       </div>
     </div>

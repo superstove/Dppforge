@@ -2,9 +2,20 @@ import { useState } from 'react';
 import { ArrowLeft, Plus, X, Loader2 } from 'lucide-react';
 import { Input, Textarea } from '../components/Input';
 import { api } from '../api';
+import type { ChangeEvent, FormEvent } from 'react';
+import type { ConversionResult, TechnicalProperty, ViewName } from '../types';
 
-export function ManualEntryView({ setView, onReview }: any) {
+type TechPropRow = { name: string; value: string; unit: string; test_method: string };
+
+export function ManualEntryView({
+  setView,
+  onReview,
+}: {
+  setView: (v: ViewName) => void;
+  onReview: (data: ConversionResult) => void;
+}) {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [formData, setFormData] = useState({
     product_name: '',
     manufacturer: '',
@@ -25,24 +36,25 @@ export function ManualEntryView({ setView, onReview }: any) {
 
   const [techProps, setTechProps] = useState([{ name: '', value: '', unit: '', test_method: '' }]);
 
-  const handleChange = (e: any) => {
+  const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleTechPropChange = (index: number, field: string, value: string) => {
+  const handleTechPropChange = (index: number, field: keyof TechPropRow, value: string) => {
     const newProps = [...techProps];
-    (newProps[index] as any)[field] = value;
+    newProps[index][field] = value;
     setTechProps(newProps);
   };
 
   const addTechProp = () => setTechProps([...techProps, { name: '', value: '', unit: '', test_method: '' }]);
   const removeTechProp = (index: number) => setTechProps(techProps.filter((_, i) => i !== index));
 
-  const handleSubmit = async (e: any) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
+    setError('');
 
-    const technical_properties: any = {};
+    const technical_properties: Record<string, TechnicalProperty> = {};
     techProps.forEach(p => {
       if (p.name) {
         technical_properties[p.name] = {
@@ -55,9 +67,9 @@ export function ManualEntryView({ setView, onReview }: any) {
 
     const payload = {
       ...formData,
-      shelf_life_months: parseInt(formData.shelf_life_months as any) || 12,
-      recycled_content_pct: parseFloat(formData.recycled_content_pct as any) || 0,
-      carbon_footprint_value: parseFloat(formData.carbon_footprint_value as any) || 0,
+      shelf_life_months: parseInt(String(formData.shelf_life_months)) || 12,
+      recycled_content_pct: parseFloat(String(formData.recycled_content_pct)) || 0,
+      carbon_footprint_value: parseFloat(String(formData.carbon_footprint_value)) || 0,
       standards_compliance: formData.standards_compliance.split(',').map(s => s.trim()).filter(Boolean),
       applications: formData.applications.split(',').map(s => s.trim()).filter(Boolean),
       technical_properties,
@@ -67,24 +79,29 @@ export function ManualEntryView({ setView, onReview }: any) {
     try {
       const res = await api.convertManual(payload);
       onReview(res);
-    } catch (err) {
-      alert("Failed to submit. Is the backend running?");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to submit. Check backend connection and required fields.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-8 pb-32">
+    <div className="max-w-4xl mx-auto px-4 py-6 sm:p-8 pb-36">
       <button onClick={() => setView('home')} className="flex items-center text-[#8b8fa3] hover:text-white mb-8 transition-colors font-medium">
         <ArrowLeft className="w-4 h-4 mr-2" /> Back to Home
       </button>
       
-      <h2 className="text-4xl font-bold text-white mb-10 tracking-tight">Manual Data Entry</h2>
+      <h2 className="text-3xl sm:text-4xl font-bold text-white mb-8 sm:mb-10 tracking-tight">Manual Data Entry</h2>
+      {error && (
+        <div className="bg-[#ef4444]/10 border border-[#ef4444]/20 rounded-2xl p-5 mb-8 text-[#fecaca] font-medium">
+          {error}
+        </div>
+      )}
       
       <form onSubmit={handleSubmit} className="space-y-8">
-        <div className="bg-[#1a1d27]/80 backdrop-blur-sm border border-[#2e3245] rounded-2xl p-8 shadow-lg">
-          <h3 className="text-xl font-semibold text-white mb-6 flex items-center">
+        <div className="bg-[#1a1d27]/80 backdrop-blur-sm border border-[#2e3245] rounded-2xl p-5 sm:p-8 shadow-lg">
+          <h3 className="text-lg sm:text-xl font-semibold text-white mb-6 flex items-center">
             <span className="bg-white text-black w-6 h-6 rounded-full flex items-center justify-center text-sm mr-3">1</span> 
             Basic Information
           </h3>
@@ -101,7 +118,7 @@ export function ManualEntryView({ setView, onReview }: any) {
           </div>
         </div>
 
-        <div className="bg-[#1a1d27]/80 backdrop-blur-sm border border-[#2e3245] rounded-2xl p-8 shadow-lg">
+        <div className="bg-[#1a1d27]/80 backdrop-blur-sm border border-[#2e3245] rounded-2xl p-5 sm:p-8 shadow-lg">
           <h3 className="text-xl font-semibold text-white mb-6 flex items-center">
             <span className="bg-white text-black w-6 h-6 rounded-full flex items-center justify-center text-sm mr-3">2</span> 
             Packaging & Storage
@@ -113,7 +130,7 @@ export function ManualEntryView({ setView, onReview }: any) {
           </div>
         </div>
 
-        <div className="bg-[#1a1d27]/80 backdrop-blur-sm border border-[#2e3245] rounded-2xl p-8 shadow-lg">
+        <div className="bg-[#1a1d27]/80 backdrop-blur-sm border border-[#2e3245] rounded-2xl p-5 sm:p-8 shadow-lg">
           <h3 className="text-xl font-semibold text-white mb-6 flex items-center">
              <span className="bg-white text-black w-6 h-6 rounded-full flex items-center justify-center text-sm mr-3">3</span> 
              Standards & Applications
@@ -124,26 +141,26 @@ export function ManualEntryView({ setView, onReview }: any) {
           </div>
         </div>
 
-        <div className="bg-[#1a1d27]/80 backdrop-blur-sm border border-[#2e3245] rounded-2xl p-8 shadow-lg">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-xl font-semibold text-white flex items-center">
+        <div className="bg-[#1a1d27]/80 backdrop-blur-sm border border-[#2e3245] rounded-2xl p-5 sm:p-8 shadow-lg">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
+            <h3 className="text-lg sm:text-xl font-semibold text-white flex items-center">
                <span className="bg-white text-black w-6 h-6 rounded-full flex items-center justify-center text-sm mr-3">4</span> 
                Technical Properties
             </h3>
-            <button type="button" onClick={addTechProp} className="flex items-center text-sm bg-white text-black font-medium px-4 py-2 rounded-full transition-colors hover:bg-gray-200">
+            <button type="button" onClick={addTechProp} className="flex items-center justify-center text-sm bg-white text-black font-medium px-4 py-2 rounded-full transition-colors hover:bg-gray-200">
               <Plus className="w-4 h-4 mr-1" /> Add Row
             </button>
           </div>
           <div className="space-y-4">
             {techProps.map((prop, index) => (
-              <div key={index} className="flex gap-4 items-start p-4 bg-[#242736]/50 border border-[#2e3245] rounded-xl relative group">
-                <div className="flex-1 grid grid-cols-2 lg:grid-cols-4 gap-4">
-                  <Input placeholder="Property (e.g. density)" value={prop.name} onChange={(e: any) => handleTechPropChange(index, 'name', e.target.value)} />
-                  <Input placeholder="Value (e.g. 1.8)" value={prop.value} onChange={(e: any) => handleTechPropChange(index, 'value', e.target.value)} />
-                  <Input placeholder="Unit (e.g. g/cm³)" value={prop.unit} onChange={(e: any) => handleTechPropChange(index, 'unit', e.target.value)} />
-                  <Input placeholder="Test Method" value={prop.test_method} onChange={(e: any) => handleTechPropChange(index, 'test_method', e.target.value)} />
+              <div key={index} className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-start p-4 bg-[#242736]/50 border border-[#2e3245] rounded-xl relative group">
+                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Input placeholder="Property (e.g. density)" value={prop.name} onChange={(e) => handleTechPropChange(index, 'name', e.target.value)} />
+                  <Input placeholder="Value (e.g. 1.8)" value={prop.value} onChange={(e) => handleTechPropChange(index, 'value', e.target.value)} />
+                  <Input placeholder="Unit (e.g. g/cm³)" value={prop.unit} onChange={(e) => handleTechPropChange(index, 'unit', e.target.value)} />
+                  <Input placeholder="Test Method" value={prop.test_method} onChange={(e) => handleTechPropChange(index, 'test_method', e.target.value)} />
                 </div>
-                <button type="button" onClick={() => removeTechProp(index)} className="p-2.5 mt-2 text-[#8b8fa3] hover:text-white hover:bg-[#ef4444] rounded-lg transition-colors border border-transparent hover:border-[#ef4444]">
+                <button type="button" onClick={() => removeTechProp(index)} className="p-2.5 sm:mt-2 text-[#8b8fa3] hover:text-white hover:bg-[#ef4444] rounded-lg transition-colors border border-[#2e3245] sm:border-transparent hover:border-[#ef4444] flex justify-center">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -152,7 +169,7 @@ export function ManualEntryView({ setView, onReview }: any) {
           </div>
         </div>
 
-        <div className="bg-[#1a1d27]/80 backdrop-blur-sm border border-[#2e3245] rounded-2xl p-8 shadow-lg">
+        <div className="bg-[#1a1d27]/80 backdrop-blur-sm border border-[#2e3245] rounded-2xl p-5 sm:p-8 shadow-lg">
           <h3 className="text-xl font-semibold text-white mb-6 flex items-center">
              <span className="bg-white text-black w-6 h-6 rounded-full flex items-center justify-center text-sm mr-3">5</span> 
              Sustainability (Optional)
@@ -164,13 +181,13 @@ export function ManualEntryView({ setView, onReview }: any) {
           </div>
         </div>
 
-        <div className="flex justify-end pt-6 sticky bottom-6 z-20">
-          <div className="bg-[#0f1117]/90 backdrop-blur-md border border-[#2e3245] p-4 rounded-full flex items-center shadow-2xl">
+        <div className="flex justify-end pt-6 sticky bottom-3 sm:bottom-6 z-20">
+          <div className="w-full sm:w-auto bg-[#0f1117]/90 backdrop-blur-md border border-[#2e3245] p-3 sm:p-4 rounded-2xl sm:rounded-full flex items-center shadow-2xl">
             <span className="text-sm text-[#8b8fa3] mr-6 ml-2 hidden sm:inline-block">Ensure all required fields are filled</span>
             <button 
               type="submit" 
               disabled={loading}
-              className="flex items-center bg-white text-black px-8 py-3 rounded-full font-bold hover:bg-gray-200 transition-colors disabled:opacity-50"
+              className="w-full sm:w-auto justify-center flex items-center bg-white text-black px-6 sm:px-8 py-3 rounded-full font-bold hover:bg-gray-200 transition-colors disabled:opacity-50"
             >
               {loading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : null}
               {loading ? 'Processing...' : 'Convert to DPP JSON'}

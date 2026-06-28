@@ -10,5 +10,17 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
-      - key: CONSTRUCTASK_VERIFY_URL
+      - key: PUBLIC_APP_URL
+        sync: false
+      - key: CONSTRUCTASK_URL
         value: https://constructask.vercel.app
+      - key: TDS_GEMINI_API_KEY
+        sync: false
+      - key: TDS_GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: DEMO_SEED_ENABLED
+        value: false
+      - key: ENABLE_PASSPORT_DELETE
+        value: false
+      - key: CORS_ORIGINS
+        sync: false

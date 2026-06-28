@@ -1,7 +1,21 @@
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
+import { ConversionResult, DppJson, PassportDetail, PassportSummary, SaveResult } from './types';
+
+const configuredApiUrl = import.meta.env.VITE_API_URL || '/api';
+export const API_BASE = configuredApiUrl.replace(/\/$/, '');
+
+export function resolveAssetUrl(path?: string | null) {
+  if (!path) return '';
+  if (path.startsWith('http')) return path;
+  if (!API_BASE.startsWith('http')) return path;
+
+  const backendOrigin = API_BASE.endsWith('/api')
+    ? API_BASE.slice(0, -4)
+    : API_BASE;
+  return `${backendOrigin}${path.startsWith('/') ? path : `/${path}`}`;
+}
 
 export const api = {
-  convertManual: async (data: any) => {
+  convertManual: async (data: unknown): Promise<ConversionResult> => {
     const res = await fetch(`${API_BASE}/convert/manual`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -14,7 +28,7 @@ export const api = {
     return await res.json();
   },
 
-  convertUpload: async (file: File) => {
+  convertUpload: async (file: File): Promise<ConversionResult> => {
     const formData = new FormData();
     formData.append('file', file);
     const res = await fetch(`${API_BASE}/convert/upload`, {
@@ -28,7 +42,7 @@ export const api = {
     return await res.json();
   },
 
-  saveDpp: async (dpp_json: any) => {
+  saveDpp: async (dpp_json: DppJson): Promise<SaveResult> => {
     const res = await fetch(`${API_BASE}/convert/save`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -41,17 +55,17 @@ export const api = {
     return await res.json();
   },
 
-  previewQr: async (dpp_json: any): Promise<Blob> => {
+  previewQr: async (dpp_json: DppJson, qr_type = 'dpp_forge'): Promise<Blob> => {
     const res = await fetch(`${API_BASE}/convert/preview-qr`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dpp_json })
+      body: JSON.stringify({ dpp_json, qr_type })
     });
     if (!res.ok) throw new Error('QR generation failed');
     return await res.blob();
   },
 
-  downloadJson: async (dpp_json: any): Promise<Blob> => {
+  downloadJson: async (dpp_json: DppJson): Promise<Blob> => {
     const res = await fetch(`${API_BASE}/convert/download-json`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -61,13 +75,14 @@ export const api = {
     return await res.blob();
   },
 
-  getPassports: async () => {
-    const res = await fetch(`${API_BASE}/passports/`);
+  getPassports: async (limit = 50, offset = 0): Promise<PassportSummary[]> => {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    const res = await fetch(`${API_BASE}/passports/?${params.toString()}`);
     if (!res.ok) throw new Error('Failed to load passports');
     return await res.json();
   },
 
-  getPassport: async (id: number | string) => {
+  getPassport: async (id: number | string): Promise<PassportDetail> => {
     const res = await fetch(`${API_BASE}/passports/${id}`);
     if (!res.ok) throw new Error('Failed to load passport');
     return await res.json();

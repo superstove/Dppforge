@@ -22,15 +22,31 @@ from routes import converter, passports
 
 Base.metadata.create_all(bind=engine)
 
+if os.getenv("DEMO_SEED_ENABLED", "").lower() in {"1", "true", "yes"}:
+    from database import SessionLocal
+    from demo_seed import seed_demo_record
+
+    db = SessionLocal()
+    try:
+        seed_demo_record(db)
+    finally:
+        db.close()
+
 app = FastAPI(
     title="DPP Converter",
     description="TDS-to-JSON Digital Product Passport Converter with QR Generation",
     version="1.0.0",
 )
 
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

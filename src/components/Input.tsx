@@ -1,4 +1,14 @@
-export function Input({ label, required, ...props }: any) {
+import type { InputHTMLAttributes, TextareaHTMLAttributes } from 'react';
+
+type InputProps = InputHTMLAttributes<HTMLInputElement> & {
+  label?: string;
+};
+
+type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
+  label?: string;
+};
+
+export function Input({ label, required, ...props }: InputProps) {
   return (
     <div className="flex flex-col mb-4">
       {label && (
@@ -14,7 +24,7 @@ export function Input({ label, required, ...props }: any) {
   );
 }
 
-export function Textarea({ label, required, ...props }: any) {
+export function Textarea({ label, required, ...props }: TextareaProps) {
   return (
     <div className="flex flex-col mb-4">
       {label && (

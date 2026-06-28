@@ -26,9 +26,11 @@ from models import DPPRecord
 
 router = APIRouter()
 
-CONSTRUCTASK_VERIFY_URL = os.getenv(
-    "CONSTRUCTASK_VERIFY_URL", "https://constructask.vercel.app"
-)
+PUBLIC_APP_URL = os.getenv(
+    "PUBLIC_APP_URL",
+    os.getenv("APP_URL", os.getenv("CONSTRUCTASK_VERIFY_URL", "http://localhost:3000")),
+).rstrip("/")
+CONSTRUCTASK_URL = os.getenv("CONSTRUCTASK_URL", "https://constructask.vercel.app").rstrip("/")
 
 # ---------------------------------------------------------------------------
 # Unit normalization
@@ -58,6 +60,42 @@ def normalize_unit(raw: str) -> str:
 # PDF text extraction
 # ---------------------------------------------------------------------------
 
+def _clean_pdf_text(text: str) -> str:
+    text = text.replace("\x00", " ")
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def _page_blocks_text(page: Any) -> str:
+    blocks = page.get_text("blocks") or []
+    text_blocks = []
+    for block in blocks:
+        if len(block) >= 5 and str(block[4]).strip():
+            x0, y0 = float(block[0]), float(block[1])
+            text_blocks.append((y0, x0, str(block[4]).strip()))
+    text_blocks.sort(key=lambda item: (round(item[0] / 8), item[1]))
+    return "\n".join(block[2] for block in text_blocks)
+
+
+def _page_table_text(page: Any) -> str:
+    try:
+        tables = page.find_tables()
+    except Exception:
+        return ""
+
+    rows = []
+    for table in getattr(tables, "tables", []):
+        try:
+            for row in table.extract():
+                cells = [str(cell).strip() for cell in row if cell and str(cell).strip()]
+                if cells:
+                    rows.append(" | ".join(cells))
+        except Exception:
+            continue
+    return "\n".join(rows)
+
+
 def extract_text_from_pdf(pdf_bytes: bytes) -> str:
     try:
         import fitz
@@ -66,12 +104,52 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
             status_code=500,
             detail="PyMuPDF not installed. Run: pip install PyMuPDF",
         )
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    parts = []
-    for page in doc:
-        parts.append(page.get_text())
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Could not open PDF. The file may be corrupted or password protected.")
+
+    if doc.needs_pass:
+        doc.close()
+        raise HTTPException(status_code=400, detail="Password-protected PDFs are not supported. Please upload an unlocked TDS PDF.")
+
+    pages = []
+    image_only_pages = 0
+    for index, page in enumerate(doc, start=1):
+        direct = page.get_text("text") or ""
+        blocks = _page_blocks_text(page)
+        tables = _page_table_text(page)
+
+        candidates = [direct, blocks, f"{blocks}\n{tables}" if tables else ""]
+        best = max(candidates, key=lambda value: len(value.strip()))
+        best = _clean_pdf_text(best)
+
+        if len(best) < 25:
+            image_only_pages += 1
+            continue
+
+        pages.append(f"--- Page {index} ---\n{best}")
+
+    page_count = doc.page_count
     doc.close()
-    return "\n".join(parts)
+
+    merged = _clean_pdf_text("\n\n".join(pages))
+    if not merged:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "This looks like a scanned/image-only PDF. Text could not be extracted. "
+                "Use an OCR-enabled PDF or add OCR support before automatic conversion."
+            ),
+        )
+
+    if image_only_pages:
+        merged += (
+            f"\n\n[Extraction note: {image_only_pages} of {page_count} page(s) had little or no selectable text. "
+            "Review the output carefully.]"
+        )
+
+    return merged
 
 
 # ---------------------------------------------------------------------------
@@ -82,6 +160,7 @@ def _build_extraction_prompt(text: str) -> str:
     return f"""You are a construction materials data extraction assistant.
 
 Extract product information from the following Technical Data Sheet text and return ONLY valid JSON (no markdown, no explanation).
+The source may come from any TDS layout: paragraphs, multi-column brochures, table rows separated by pipes, mixed headings, or manufacturer-specific labels.
 
 Use this exact JSON structure:
 {{
@@ -104,14 +183,17 @@ Use this exact JSON structure:
 }}
 
 Rules:
-- Extract all numerical values with their units
-- Normalize units (MPa, kN/m, kg/m2, etc.)
-- Include test method references where mentioned (ISO, EN, ASTM, BIS)
-- If a value is not found, omit the field
+- Extract all numerical values with their units, including ranges such as 6-7 MPa or 16-24 hours
+- Put application-time values such as open time, pot life, adjustability time, time to traffic, water demand, mix ratio, coverage, curing time, shelf life in working_properties
+- Put performance/engineering values such as compressive strength, tensile adhesion, slip, density, deformation, thickness, elongation, load, permeability in technical_properties
+- Normalize units (MPa, N/mm2, kN/m, kg/m2, kg/m3, %, hours, minutes, mm, m)
+- Include test method references where mentioned (ISO, EN, ASTM, ANSI, IS, BIS)
+- If the TDS uses tables, infer the property name from the row/column label
+- If a value is not found, omit the field rather than inventing it
 - Return ONLY the JSON object, nothing else
 
 TDS Text:
-{text[:8000]}"""
+{text[:14000]}"""
 
 
 def ai_extract_fields(text: str) -> dict:
@@ -223,27 +305,45 @@ def _extract_with_regex(text: str) -> dict:
 
     standards = []
     tech_props = {}
+    working_props = {}
+    working_keywords = (
+        "open time", "pot life", "adjustability", "traffic", "walkable", "curing",
+        "setting time", "water", "mix ratio", "coverage", "shelf life", "workability",
+    )
     for line in lines:
-        for pat in [r"(ISO\s*\d+[\w\-]*)", r"(EN\s*\d+[\w\-]*)", r"(ASTM\s*[A-Z]\d+[\w\-]*)", r"(IS\s*\d+[\w\-]*)"]:
+        for pat in [r"(ISO\s*\d+[\w\-]*)", r"(EN\s*\d+[\w\-]*)", r"(ASTM\s*[A-Z]\d+[\w\-]*)", r"(ANSI\s*[A-Z]?\d+[\w\.\-]*)", r"(IS\s*\d+[\w\-]*)"]:
             for m in re.findall(pat, line, re.IGNORECASE):
                 if m not in standards:
                     standards.append(m)
 
-        kv = re.match(r"^([A-Za-z\s\-/]+)\s*[:=]\s*([\d.,]+)\s*([A-Za-z/%°²³⁻¹]+.*)$", line.strip())
+        kv = re.match(
+            r"^([A-Za-z0-9\s\-/().]+?)\s*(?:[:=]|\|)\s*([<>]?\s*\d[\d.,]*(?:\s*[-–]\s*\d[\d.,]*)?)\s*([A-Za-z/%°²³⁻¹μµ.\- ]+)?",
+            line.strip(),
+        )
         if kv:
             key = re.sub(r"[^a-z0-9]+", "_", kv.group(1).lower()).strip("_")
-            try:
-                val = float(kv.group(2).replace(",", ""))
-                if val == int(val):
-                    val = int(val)
-            except ValueError:
-                val = kv.group(2)
-            tech_props[key] = {"value": val, "unit": normalize_unit(kv.group(3).strip())}
+            raw_value = kv.group(2).strip()
+            if re.search(r"[-–]", raw_value):
+                val: Any = re.sub(r"\s+", "", raw_value.replace("–", "-"))
+            else:
+                try:
+                    val = float(raw_value.replace(",", "").replace("<", "").replace(">", "").strip())
+                    if val == int(val):
+                        val = int(val)
+                except ValueError:
+                    val = raw_value
+            prop = {"value": val, "unit": normalize_unit((kv.group(3) or "").strip())}
+            if any(word in key.replace("_", " ") for word in working_keywords):
+                working_props[key] = prop
+            else:
+                tech_props[key] = prop
 
     if standards:
         extracted["standards_compliance"] = standards
     if tech_props:
         extracted["technical_properties"] = tech_props
+    if working_props:
+        extracted["working_properties"] = working_props
 
     extracted["_extraction_method"] = "regex_fallback"
     return extracted
@@ -274,7 +374,7 @@ def validate_dpp(dpp: dict) -> list[str]:
 def build_dpp(fields: dict, batch_number: str = "", origin_country: str = "India") -> dict:
     product_name = fields.get("product_name", "Unknown Product")
     slug = re.sub(r"[^A-Z0-9]", "-", product_name.upper())[:20].strip("-")
-    passport_id = f"DPP-{slug}-{date.today().year}"
+    passport_id = f"DPP-{slug}-{date.today().year}-{datetime.utcnow().strftime('%H%M%S')}"
 
     return {
         "dpp_version": "1.0",
@@ -315,7 +415,7 @@ def build_dpp(fields: dict, batch_number: str = "", origin_country: str = "India
         },
         "qr_verification": {
             "qr_code": f"QR-{slug}-{date.today().year}",
-            "verification_url": f"{CONSTRUCTASK_VERIFY_URL}/verify/{passport_id}",
+            "verification_url": f"{PUBLIC_APP_URL}/?passport={passport_id}",
             "scan_type": "check_specification",
         },
         "source_document": {
@@ -375,6 +475,7 @@ class ManualInput(BaseModel):
 
 class SaveInput(BaseModel):
     dpp_json: dict
+    qr_type: str = "dpp_forge"
 
 
 # ---------------------------------------------------------------------------
@@ -438,9 +539,13 @@ def preview_qr(payload: SaveInput):
     """Generate a QR code from DPP JSON without saving to database. Returns QR as PNG."""
     dpp = payload.dpp_json
     passport_id = dpp.get("passport_id", f"DPP-PREVIEW-{date.today().year}")
-    verify_url = dpp.get("qr_verification", {}).get(
-        "verification_url",
-        f"{CONSTRUCTASK_VERIFY_URL}/verify/{passport_id}",
+    verify_url = (
+        f"{CONSTRUCTASK_URL}/?dpp={passport_id}"
+        if payload.qr_type == "constructask"
+        else dpp.get("qr_verification", {}).get(
+            "verification_url",
+            f"{PUBLIC_APP_URL}/?passport={passport_id}",
+        )
     )
 
     qr_obj = qrcode.QRCode(version=1, box_size=10, border=2)
@@ -480,16 +585,9 @@ def save_dpp(payload: SaveInput, db: Session = Depends(get_db)):
     passport_id = dpp.get("passport_id", f"DPP-UNKNOWN-{date.today().year}")
     product_name = dpp.get("product_name", "Unknown")
     manufacturer = dpp.get("manufacturer", "Unknown")
-    verify_url = dpp.get("qr_verification", {}).get(
-        "verification_url",
-        f"{CONSTRUCTASK_VERIFY_URL}/verify/{passport_id}",
-    )
-
     existing = db.query(DPPRecord).filter(DPPRecord.passport_id == passport_id).first()
     if existing:
         raise HTTPException(status_code=409, detail=f"Passport {passport_id} already exists. Edit the passport ID or delete the existing one.")
-
-    qr_bytes = generate_qr_bytes(verify_url)
 
     sustainability = dpp.get("sustainability", {})
     carbon = sustainability.get("carbon_footprint", {})
@@ -506,11 +604,21 @@ def save_dpp(payload: SaveInput, db: Session = Depends(get_db)):
         standards_count=len(dpp.get("standards_compliance", [])),
         properties_count=len(dpp.get("technical_properties", {})),
         qr_code_path=passport_id,
-        qr_code_data=qr_bytes,
+        qr_code_data=None,
         dpp_json=json.dumps(dpp, ensure_ascii=False),
         status="active",
     )
     db.add(record)
+    db.flush()
+
+    verify_url = f"{PUBLIC_APP_URL}/?passport={record.id}"
+    constructask_url = f"{CONSTRUCTASK_URL}/?dpp={passport_id}"
+    dpp.setdefault("qr_verification", {})
+    dpp["qr_verification"]["verification_url"] = verify_url
+    dpp["qr_verification"]["constructask_url"] = constructask_url
+    record.qr_code_data = generate_qr_bytes(verify_url)
+    record.dpp_json = json.dumps(dpp, ensure_ascii=False)
+
     db.commit()
     db.refresh(record)
 
@@ -520,7 +628,11 @@ def save_dpp(payload: SaveInput, db: Session = Depends(get_db)):
         "passport_id": passport_id,
         "product_name": product_name,
         "qr_code_url": f"/api/passports/{record.id}/qr",
+        "dpp_qr_code_url": f"/api/passports/{record.id}/qr",
+        "constructask_qr_code_url": f"/api/passports/{record.id}/constructask-qr",
         "verification_url": verify_url,
+        "dpp_verification_url": verify_url,
+        "constructask_verification_url": constructask_url,
         "message": f"DPP for '{product_name}' saved with QR code.",
     }
 
@@ -559,7 +671,7 @@ def workflow_info():
         },
         "constructask_integration": {
             "description": "Generated QR codes point to ConstructAsk verification URL",
-            "qr_url_format": f"{CONSTRUCTASK_VERIFY_URL}/verify/DPP-PRODUCT-YYYY",
+            "qr_url_format": f"{PUBLIC_APP_URL}/?passport=123",
             "import": "Saved DPP JSON files can be imported into ConstructAsk",
         },
     }
