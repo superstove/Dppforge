@@ -1,8 +1,8 @@
 import { CheckCircle, Database } from 'lucide-react';
 import { resolveAssetUrl } from '../api';
-import type { SaveResult, ViewName } from '../types';
+import type { SaveResult } from '../types';
 
-export function SuccessView({ setView, data }: { setView: (v: ViewName) => void; data: SaveResult }) {
+export function SuccessView({ setView, data }: { setView: (v: string) => void; data: SaveResult }) {
   const dppQrUrl = resolveAssetUrl(data.dpp_qr_code_url || data.qr_code_url);
   const constructAskQrUrl = resolveAssetUrl(data.constructask_qr_code_url);
 

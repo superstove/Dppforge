@@ -3,7 +3,7 @@ import { ArrowLeft, Plus, X, Loader2 } from 'lucide-react';
 import { Input, Textarea } from '../components/Input';
 import { api } from '../api';
 import type { ChangeEvent, FormEvent } from 'react';
-import type { ConversionResult, TechnicalProperty, ViewName } from '../types';
+import type { ConversionResult, TechnicalProperty } from '../types';
 
 type TechPropRow = { name: string; value: string; unit: string; test_method: string };
 
@@ -11,7 +11,7 @@ export function ManualEntryView({
   setView,
   onReview,
 }: {
-  setView: (v: ViewName) => void;
+  setView: (v: string) => void;
   onReview: (data: ConversionResult) => void;
 }) {
   const [loading, setLoading] = useState(false);
@@ -35,6 +35,7 @@ export function ManualEntryView({
   });
 
   const [techProps, setTechProps] = useState([{ name: '', value: '', unit: '', test_method: '' }]);
+  const [customFields, setCustomFields] = useState<{ label: string; value: string }[]>([]);
 
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -65,6 +66,11 @@ export function ManualEntryView({
       }
     });
 
+    const additional_info: Record<string, string> = {};
+    customFields.forEach(f => {
+      if (f.label.trim()) additional_info[f.label.trim()] = f.value;
+    });
+
     const payload = {
       ...formData,
       shelf_life_months: parseInt(String(formData.shelf_life_months)) || 12,
@@ -73,7 +79,8 @@ export function ManualEntryView({
       standards_compliance: formData.standards_compliance.split(',').map(s => s.trim()).filter(Boolean),
       applications: formData.applications.split(',').map(s => s.trim()).filter(Boolean),
       technical_properties,
-      working_properties: {}
+      working_properties: {},
+      ...(Object.keys(additional_info).length > 0 ? { additional_info } : {}),
     };
 
     try {
@@ -178,6 +185,33 @@ export function ManualEntryView({
             <Input label="Recycled Content %" type="number" min="0" max="100" name="recycled_content_pct" value={formData.recycled_content_pct} onChange={handleChange} />
             <Input label="Carbon Footprint Value" type="number" step="0.01" name="carbon_footprint_value" value={formData.carbon_footprint_value} onChange={handleChange} />
             <Input label="Carbon Footprint Unit" name="carbon_footprint_unit" value={formData.carbon_footprint_unit} onChange={handleChange} />
+          </div>
+        </div>
+
+        <div className="bg-[#1a1d27]/80 backdrop-blur-sm border border-[#2e3245] rounded-2xl p-5 sm:p-8 shadow-lg">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
+            <h3 className="text-lg sm:text-xl font-semibold text-white flex items-center">
+               <span className="bg-white text-black w-6 h-6 rounded-full flex items-center justify-center text-sm mr-3">6</span>
+               Custom Fields <span className="text-sm font-normal text-[#8b8fa3] ml-2">(Optional)</span>
+            </h3>
+            <button type="button" onClick={() => setCustomFields([...customFields, { label: '', value: '' }])} className="flex items-center justify-center text-sm bg-white text-black font-medium px-4 py-2 rounded-full transition-colors hover:bg-gray-200">
+              <Plus className="w-4 h-4 mr-1" /> Add Field
+            </button>
+          </div>
+          <p className="text-sm text-[#8b8fa3] mb-4">Add any extra product details not covered above — certifications, safety data, regional specs, or any property specific to your product.</p>
+          <div className="space-y-3">
+            {customFields.map((field, index) => (
+              <div key={index} className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-start p-4 bg-[#242736]/50 border border-[#2e3245] rounded-xl group">
+                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Input placeholder="Field name (e.g. Fire Rating)" value={field.label} onChange={(e) => { const n = [...customFields]; n[index].label = e.target.value; setCustomFields(n); }} />
+                  <Input placeholder="Value (e.g. Class A)" value={field.value} onChange={(e) => { const n = [...customFields]; n[index].value = e.target.value; setCustomFields(n); }} />
+                </div>
+                <button type="button" onClick={() => setCustomFields(customFields.filter((_, i) => i !== index))} className="p-2.5 sm:mt-2 text-[#8b8fa3] hover:text-white hover:bg-[#ef4444] rounded-lg transition-colors border border-[#2e3245] sm:border-transparent hover:border-[#ef4444] flex justify-center">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            ))}
+            {customFields.length === 0 && <p className="text-sm text-[#8b8fa3] italic">No custom fields added. Click "Add Field" to include extra product details.</p>}
           </div>
         </div>
 

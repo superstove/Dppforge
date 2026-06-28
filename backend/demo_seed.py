@@ -1,14 +1,18 @@
 import json
+import os
 
 from sqlalchemy.orm import Session
 
 from models import DPPRecord
+from utils import generate_qr_bytes
 
 
 def seed_demo_record(db: Session) -> None:
     existing = db.query(DPPRecord).filter(DPPRecord.passport_id == "DPP-SIKAGROUT-212-DEMO").first()
     if existing:
         return
+
+    public_url = os.getenv("PUBLIC_APP_URL", "http://localhost:3000").rstrip("/")
 
     dpp = {
         "dpp_version": "1.0",
@@ -54,4 +58,11 @@ def seed_demo_record(db: Session) -> None:
         status="active",
     )
     db.add(record)
+    db.flush()
+
+    verify_url = f"{public_url}/?passport={record.id}"
+    dpp["qr_verification"] = {"verification_url": verify_url, "qr_code": "QR-SIKAGROUT-212-DEMO"}
+    record.dpp_json = json.dumps(dpp, ensure_ascii=False)
+    record.qr_code_data = generate_qr_bytes(verify_url)
+
     db.commit()

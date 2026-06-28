@@ -7,7 +7,6 @@ Manual + Automatic conversion endpoints. No auth required (standalone app).
 
 from __future__ import annotations
 
-import io
 import json
 import os
 import re
@@ -15,22 +14,26 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-import qrcode
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import Response, StreamingResponse
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, Query as QueryParam
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models import DPPRecord
+from utils import generate_qr_bytes
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 PUBLIC_APP_URL = os.getenv(
     "PUBLIC_APP_URL",
     os.getenv("APP_URL", os.getenv("CONSTRUCTASK_VERIFY_URL", "http://localhost:3000")),
 ).rstrip("/")
 CONSTRUCTASK_URL = os.getenv("CONSTRUCTASK_URL", "https://constructask.vercel.app").rstrip("/")
+MINIMUM_SAVE_CONFIDENCE = 90
 
 # ---------------------------------------------------------------------------
 # Unit normalization
@@ -134,16 +137,26 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
     doc.close()
 
     merged = _clean_pdf_text("\n\n".join(pages))
+
+    if not merged or image_only_pages > 0:
+        ocr_text = _ocr_pdf_pages(pdf_bytes, image_only_pages if merged else page_count)
+        if ocr_text:
+            if merged:
+                merged += f"\n\n--- OCR Extracted ({image_only_pages} page(s)) ---\n{ocr_text}"
+            else:
+                merged = ocr_text
+            merged += "\n\n[Extraction note: OCR was used for scanned pages. Review the output carefully.]"
+
     if not merged:
         raise HTTPException(
             status_code=422,
             detail=(
-                "This looks like a scanned/image-only PDF. Text could not be extracted. "
-                "Use an OCR-enabled PDF or add OCR support before automatic conversion."
+                "This looks like a scanned/image-only PDF and OCR could not extract text. "
+                "Install Tesseract OCR or use a text-selectable PDF."
             ),
         )
 
-    if image_only_pages:
+    if image_only_pages and "[Extraction note:" not in merged:
         merged += (
             f"\n\n[Extraction note: {image_only_pages} of {page_count} page(s) had little or no selectable text. "
             "Review the output carefully.]"
@@ -152,15 +165,78 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
     return merged
 
 
+def _ocr_pdf_pages(pdf_bytes: bytes, max_pages: int = 10) -> str:
+    try:
+        import fitz
+        from PIL import Image
+        import pytesseract
+    except ImportError:
+        return ""
+
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    except Exception:
+        return ""
+
+    ocr_pages = []
+    for i, page in enumerate(doc):
+        if i >= max_pages:
+            break
+        try:
+            pix = page.get_pixmap(dpi=300)
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            text = pytesseract.image_to_string(img, lang="eng")
+            text = _clean_pdf_text(text)
+            if len(text) > 25:
+                ocr_pages.append(f"--- OCR Page {i + 1} ---\n{text}")
+        except Exception:
+            continue
+
+    doc.close()
+    return "\n\n".join(ocr_pages)
+
+
 # ---------------------------------------------------------------------------
 # AI extraction
 # ---------------------------------------------------------------------------
 
-def _build_extraction_prompt(text: str) -> str:
+DOC_PROMPTS = {
+    "tds": "Technical Data Sheet",
+    "epd": "Environmental Product Declaration (EPD)",
+    "dop": "Declaration of Performance (DoP / CE marking)",
+    "test_report": "Test Report / Laboratory Certificate",
+}
+
+
+def _build_extraction_prompt(text: str, doc_type: str = "tds") -> str:
+    doc_label = DOC_PROMPTS.get(doc_type, "Technical Data Sheet")
+
+    extra_rules = ""
+    if doc_type == "epd":
+        extra_rules = """
+- Extract LCA / environmental impact data: GWP (Global Warming Potential), ODP, AP, EP, POCP, ADPE, ADPF
+- Put environmental impact values in technical_properties with their functional unit
+- Extract declared unit, product stage (A1-A3, C1-C4, D), EPD program operator, EPD number
+- Map carbon_footprint_value to the GWP-total A1-A3 value if present
+"""
+    elif doc_type == "dop":
+        extra_rules = """
+- Extract CE marking details: notified body number, system of AVCP (1/1+/2+/3/4)
+- Extract declared performance values for each essential characteristic
+- Map EN standard references (e.g. EN 13162, EN 12004) to standards_compliance
+- Extract DoP reference number, ETAG/EAD references if present
+"""
+    elif doc_type == "test_report":
+        extra_rules = """
+- Extract test method, specimen details, test date, laboratory name
+- Map each test result to technical_properties with the test method reference
+- Extract pass/fail conclusions if stated
+"""
+
     return f"""You are a construction materials data extraction assistant.
 
-Extract product information from the following Technical Data Sheet text and return ONLY valid JSON (no markdown, no explanation).
-The source may come from any TDS layout: paragraphs, multi-column brochures, table rows separated by pipes, mixed headings, or manufacturer-specific labels.
+Extract product information from the following {doc_label} text and return ONLY valid JSON (no markdown, no explanation).
+The source may come from any document layout: paragraphs, multi-column brochures, table rows separated by pipes, mixed headings, or manufacturer-specific labels.
 
 Use this exact JSON structure:
 {{
@@ -179,7 +255,14 @@ Use this exact JSON structure:
   "standards_compliance": ["..."],
   "packaging": "...",
   "storage": "...",
-  "shelf_life_months": 12
+  "shelf_life_months": 12,
+  "confidence": {{
+    "product_name": 95,
+    "manufacturer": 90,
+    "technical_properties": 85,
+    "standards_compliance": 80,
+    "overall": 87
+  }}
 }}
 
 Rules:
@@ -188,30 +271,32 @@ Rules:
 - Put performance/engineering values such as compressive strength, tensile adhesion, slip, density, deformation, thickness, elongation, load, permeability in technical_properties
 - Normalize units (MPa, N/mm2, kN/m, kg/m2, kg/m3, %, hours, minutes, mm, m)
 - Include test method references where mentioned (ISO, EN, ASTM, ANSI, IS, BIS)
-- If the TDS uses tables, infer the property name from the row/column label
+- If the document uses tables, infer the property name from the row/column label
 - If a value is not found, omit the field rather than inventing it
+- For each key field, estimate a confidence score (0-100) based on how clearly the value was stated in the source text
+- The overall confidence is the weighted average across all extracted fields{extra_rules}
 - Return ONLY the JSON object, nothing else
 
-TDS Text:
+{doc_label} Text:
 {text[:14000]}"""
 
 
-def ai_extract_fields(text: str) -> dict:
+def ai_extract_fields(text: str, doc_type: str = "tds") -> dict:
     if os.getenv("TDS_OPENAI_API_KEY"):
-        return _extract_with_openai(text, os.getenv("TDS_OPENAI_API_KEY", ""))
+        return _extract_with_openai(text, os.getenv("TDS_OPENAI_API_KEY", ""), doc_type)
     elif os.getenv("TDS_GEMINI_API_KEY"):
-        return _extract_with_gemini(text, os.getenv("TDS_GEMINI_API_KEY", ""))
+        return _extract_with_gemini(text, os.getenv("TDS_GEMINI_API_KEY", ""), doc_type)
     else:
         return _extract_with_regex(text)
 
 
-def _extract_with_openai(text: str, api_key: str) -> dict:
+def _extract_with_openai(text: str, api_key: str, doc_type: str = "tds") -> dict:
     try:
         import openai
         client = openai.OpenAI(api_key=api_key)
         resp = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "user", "content": _build_extraction_prompt(text)}],
+            messages=[{"role": "user", "content": _build_extraction_prompt(text, doc_type)}],
             temperature=0.1,
             max_tokens=4000,
         )
@@ -223,12 +308,12 @@ def _extract_with_openai(text: str, api_key: str) -> dict:
         return {"_extraction_error": _friendly_error(e, "OpenAI"), **_extract_with_regex(text)}
 
 
-def _extract_with_gemini(text: str, api_key: str) -> dict:
+def _extract_with_gemini(text: str, api_key: str, doc_type: str = "tds") -> dict:
     try:
         import google.generativeai as genai
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(os.getenv("TDS_GEMINI_MODEL", "gemini-2.5-flash"))
-        resp = model.generate_content(_build_extraction_prompt(text))
+        resp = model.generate_content(_build_extraction_prompt(text, doc_type))
         raw = resp.text.strip()
         raw = re.sub(r"^```json\s*", "", raw)
         raw = re.sub(r"\s*```$", "", raw)
@@ -367,22 +452,85 @@ def validate_dpp(dpp: dict) -> list[str]:
     return warnings
 
 
+def _field_sources(fields: dict, doc_type: str) -> list[dict]:
+    title = fields.get("tds_title") or fields.get("product_name") or "Source document"
+    source_type = DOC_PROMPTS.get(doc_type, "Source document")
+    base_conf = fields.get("confidence", {})
+    sources = []
+    for field in ["product_name", "manufacturer", "category", "standards_compliance", "technical_properties"]:
+        value = fields.get(field)
+        if value:
+            sources.append({
+                "field": field,
+                "source_type": source_type,
+                "source_title": title,
+                "citation": fields.get(f"{field}_citation", ""),
+                "confidence": base_conf.get(field, base_conf.get("overall", 0)),
+            })
+    return sources
+
+
+def _ensure_quality_metadata(dpp: dict, conversion_method: str = "manual") -> dict:
+    confidence = dpp.get("confidence", {})
+    if "data_rights" not in dpp:
+        dpp["data_rights"] = {
+            "permission_status": "internal_review",
+            "rights_holder": dpp.get("manufacturer", ""),
+            "allowed_uses": ["internal_review", "manufacturer_authorized_public_qr"],
+            "license_notes": "Confirm manufacturer permission before publishing externally.",
+        }
+    if "evidence" not in dpp:
+        source = dpp.get("source_document", {})
+        dpp["evidence"] = {
+            "minimum_confidence_required": MINIMUM_SAVE_CONFIDENCE,
+            "field_sources": [
+                {
+                    "field": "product_name",
+                    "source_type": source.get("type", "Source document"),
+                    "source_title": source.get("document_title", dpp.get("product_name", "")),
+                    "citation": "",
+                    "confidence": confidence.get("product_name", confidence.get("overall", 0)),
+                },
+                {
+                    "field": "manufacturer",
+                    "source_type": source.get("type", "Source document"),
+                    "source_title": source.get("document_title", dpp.get("product_name", "")),
+                    "citation": "",
+                    "confidence": confidence.get("manufacturer", confidence.get("overall", 0)),
+                },
+            ],
+            "quality_notes": "Field citations must be completed during review for authority-grade records.",
+        }
+    dpp.setdefault("audit_trail", []).append({
+        "event": "dpp_created",
+        "actor": dpp.get("source_document", {}).get("converted_by", "DPP Forge"),
+        "method": conversion_method,
+        "timestamp": datetime.now().isoformat(),
+    })
+    return dpp
+
+
 # ---------------------------------------------------------------------------
 # DPP JSON builder
 # ---------------------------------------------------------------------------
 
-def build_dpp(fields: dict, batch_number: str = "", origin_country: str = "India") -> dict:
+def build_dpp(fields: dict, batch_number: str = "", origin_country: str = "India", doc_type: str = "tds") -> dict:
+    from datetime import timezone
     product_name = fields.get("product_name", "Unknown Product")
     slug = re.sub(r"[^A-Z0-9]", "-", product_name.upper())[:20].strip("-")
-    passport_id = f"DPP-{slug}-{date.today().year}-{datetime.utcnow().strftime('%H%M%S')}"
+    now = datetime.now(timezone.utc)
+    passport_id = f"DPP-{slug}-{date.today().year}-{now.strftime('%H%M%S')}"
 
-    return {
+    confidence = fields.get("confidence", {})
+
+    dpp = {
         "dpp_version": "1.0",
         "passport_id": passport_id,
         "product_name": product_name,
         "manufacturer": fields.get("manufacturer", ""),
         "category": fields.get("category", ""),
         "description": fields.get("description", ""),
+        "document_type": doc_type,
         "technical_properties": fields.get("technical_properties", {}),
         "working_properties": fields.get("working_properties", {}),
         "application": {
@@ -418,31 +566,43 @@ def build_dpp(fields: dict, batch_number: str = "", origin_country: str = "India
             "verification_url": f"{PUBLIC_APP_URL}/?passport={passport_id}",
             "scan_type": "check_specification",
         },
+        "confidence": {
+            "overall": confidence.get("overall", 0),
+            "product_name": confidence.get("product_name", 0),
+            "manufacturer": confidence.get("manufacturer", 0),
+            "technical_properties": confidence.get("technical_properties", 0),
+            "standards_compliance": confidence.get("standards_compliance", 0),
+        },
         "source_document": {
-            "type": "Technical Data Sheet",
-            "document_title": fields.get("tds_title", f"{product_name} - Technical Data Sheet"),
+            "type": DOC_PROMPTS.get(doc_type, "Technical Data Sheet"),
+            "document_type_code": doc_type,
+            "document_title": fields.get("tds_title", f"{product_name} - {DOC_PROMPTS.get(doc_type, 'Technical Data Sheet')}"),
             "revision": fields.get("tds_revision", ""),
             "date_issued": fields.get("tds_date", ""),
             "conversion_method": fields.get("_extraction_method", "manual"),
-            "converted_by": fields.get("converted_by", "DPP Converter"),
+            "converted_by": fields.get("converted_by", "DPP Forge"),
             "conversion_date": str(date.today()),
         },
+        **({"additional_info": fields["additional_info"]} if fields.get("additional_info") else {}),
     }
-
-
-# ---------------------------------------------------------------------------
-# QR generation
-# ---------------------------------------------------------------------------
-
-def generate_qr_bytes(verification_url: str) -> bytes:
-    qr = qrcode.QRCode(version=1, box_size=10, border=2)
-    qr.add_data(verification_url)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
-    return buf.read()
+    dpp["evidence"] = {
+        "minimum_confidence_required": MINIMUM_SAVE_CONFIDENCE,
+        "field_sources": _field_sources(fields, doc_type),
+        "quality_notes": "Review each extracted field against cited source material before external publication.",
+    }
+    dpp["data_rights"] = {
+        "permission_status": "internal_review",
+        "rights_holder": fields.get("manufacturer", ""),
+        "allowed_uses": ["internal_review", "manufacturer_authorized_public_qr"],
+        "license_notes": "Manufacturer permission or public document reuse rights must be confirmed.",
+    }
+    dpp["audit_trail"] = [{
+        "event": "dpp_created",
+        "actor": fields.get("converted_by", "DPP Forge"),
+        "method": fields.get("_extraction_method", "manual"),
+        "timestamp": now.isoformat(),
+    }]
+    return dpp
 
 
 # ---------------------------------------------------------------------------
@@ -468,9 +628,11 @@ class ManualInput(BaseModel):
     recycled_content_pct: int = 0
     carbon_footprint_value: float = 0.0
     carbon_footprint_unit: str = "kgCO2e/unit"
+    document_type: str = "tds"
     tds_title: str = ""
     tds_revision: str = ""
     tds_date: str = ""
+    additional_info: dict = Field(default_factory=dict)
 
 
 class SaveInput(BaseModel):
@@ -487,23 +649,32 @@ def manual_convert(payload: ManualInput):
     """Manual TDS-to-JSON conversion."""
     fields = payload.model_dump()
     fields["_extraction_method"] = "manual"
-    dpp = build_dpp(fields, payload.batch_number, payload.origin_country)
+    fields["confidence"] = {"overall": 100, "product_name": 100, "manufacturer": 100, "technical_properties": 100, "standards_compliance": 100}
+    dpp = build_dpp(fields, payload.batch_number, payload.origin_country, payload.document_type)
     warnings = validate_dpp(dpp)
     return {
         "status": "review_required",
         "conversion_method": "manual",
+        "document_type": payload.document_type,
         "warnings": warnings,
         "extracted_dpp": dpp,
     }
 
 
 @router.post("/upload")
-async def upload_extract(file: UploadFile = File(...)):
-    """Upload TDS PDF, extract text, AI-map fields, return DPP JSON for review."""
+@limiter.limit("10/minute")
+async def upload_extract(
+    request: Request,
+    file: UploadFile = File(...),
+    doc_type: str = "tds",
+):
+    """Upload PDF (TDS/EPD/DoP/Test Report), extract text, AI-map fields, return DPP JSON for review."""
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
     if file.size and file.size > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+    if doc_type not in DOC_PROMPTS:
+        doc_type = "tds"
 
     pdf_bytes = await file.read()
     raw_text = extract_text_from_pdf(pdf_bytes)
@@ -514,12 +685,12 @@ async def upload_extract(file: UploadFile = File(...)):
             detail="Could not extract enough text from PDF. It may be a scanned image.",
         )
 
-    extracted = ai_extract_fields(raw_text)
+    extracted = ai_extract_fields(raw_text, doc_type)
     method = extracted.pop("_extraction_method", "ai")
     error = extracted.pop("_extraction_error", None)
     extracted["_extraction_method"] = method
 
-    dpp = build_dpp(extracted, extracted.get("batch_number", ""), extracted.get("origin_country", "India"))
+    dpp = build_dpp(extracted, extracted.get("batch_number", ""), extracted.get("origin_country", "India"), doc_type)
     warnings = validate_dpp(dpp)
     if error:
         warnings.append(error)
@@ -527,10 +698,76 @@ async def upload_extract(file: UploadFile = File(...)):
     return {
         "status": "review_required",
         "conversion_method": method,
+        "document_type": doc_type,
         "raw_text_preview": raw_text[:2000],
         "raw_text_length": len(raw_text),
         "warnings": warnings,
         "extracted_dpp": dpp,
+        "source_file_name": file.filename,
+    }
+
+
+@router.post("/batch-upload")
+@limiter.limit("5/minute")
+async def batch_upload(
+    request: Request,
+    files: list[UploadFile] = File(...),
+    doc_type: str = "tds",
+):
+    """Upload multiple PDFs for batch conversion."""
+    if len(files) > 20:
+        raise HTTPException(400, "Maximum 20 files per batch")
+    if doc_type not in DOC_PROMPTS:
+        doc_type = "tds"
+
+    results = []
+    for file in files:
+        if not file.filename or not file.filename.lower().endswith(".pdf"):
+            results.append({"file": file.filename or "unknown", "status": "error", "detail": "Not a PDF file"})
+            continue
+        if file.size and file.size > 10 * 1024 * 1024:
+            results.append({"file": file.filename, "status": "error", "detail": "File too large (max 10MB)"})
+            continue
+
+        try:
+            pdf_bytes = await file.read()
+            raw_text = extract_text_from_pdf(pdf_bytes)
+            if len(raw_text.strip()) < 50:
+                results.append({"file": file.filename, "status": "error", "detail": "Not enough text extracted"})
+                continue
+
+            extracted = ai_extract_fields(raw_text, doc_type)
+            method = extracted.pop("_extraction_method", "ai")
+            error = extracted.pop("_extraction_error", None)
+            extracted["_extraction_method"] = method
+
+            dpp = build_dpp(extracted, extracted.get("batch_number", ""), extracted.get("origin_country", "India"), doc_type)
+            warnings = validate_dpp(dpp)
+            if error:
+                warnings.append(error)
+
+            results.append({
+                "file": file.filename,
+                "status": "review_required",
+                "conversion_method": method,
+                "document_type": doc_type,
+                "warnings": warnings,
+                "extracted_dpp": dpp,
+                "source_file_name": file.filename,
+            })
+        except HTTPException as he:
+            results.append({"file": file.filename, "status": "error", "detail": he.detail})
+        except Exception as e:
+            results.append({"file": file.filename, "status": "error", "detail": str(e)})
+
+    succeeded = sum(1 for r in results if r["status"] == "review_required")
+    failed = len(results) - succeeded
+    return {
+        "status": "ok",
+        "total": len(results),
+        "succeeded": succeeded,
+        "failed": failed,
+        "results": results,
     }
 
 
@@ -548,17 +785,10 @@ def preview_qr(payload: SaveInput):
         )
     )
 
-    qr_obj = qrcode.QRCode(version=1, box_size=10, border=2)
-    qr_obj.add_data(verify_url)
-    qr_obj.make(fit=True)
-    img = qr_obj.make_image(fill_color="black", back_color="white").convert("RGB")
+    qr_bytes = generate_qr_bytes(verify_url)
 
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
-
-    return StreamingResponse(
-        buf,
+    return Response(
+        content=qr_bytes,
         media_type="image/png",
         headers={"Content-Disposition": f'attachment; filename="{passport_id}.png"'},
     )
@@ -579,7 +809,8 @@ def download_json(payload: SaveInput):
 
 
 @router.post("/save")
-def save_dpp(payload: SaveInput, db: Session = Depends(get_db)):
+@limiter.limit("20/minute")
+def save_dpp(request: Request, payload: SaveInput, db: Session = Depends(get_db)):
     """Save approved DPP JSON, generate QR code, store in database."""
     dpp = payload.dpp_json
     passport_id = dpp.get("passport_id", f"DPP-UNKNOWN-{date.today().year}")
@@ -592,6 +823,18 @@ def save_dpp(payload: SaveInput, db: Session = Depends(get_db)):
     sustainability = dpp.get("sustainability", {})
     carbon = sustainability.get("carbon_footprint", {})
 
+    confidence = dpp.get("confidence", {})
+    overall_confidence = float(confidence.get("overall", 0) or 0)
+    if overall_confidence < MINIMUM_SAVE_CONFIDENCE:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Overall confidence must be at least {MINIMUM_SAVE_CONFIDENCE}% before saving. Current: {overall_confidence:.0f}%.",
+        )
+    dpp = _ensure_quality_metadata(
+        dpp,
+        dpp.get("source_document", {}).get("conversion_method", "manual"),
+    )
+
     record = DPPRecord(
         passport_id=passport_id,
         product_name=product_name,
@@ -600,9 +843,13 @@ def save_dpp(payload: SaveInput, db: Session = Depends(get_db)):
         batch_number=dpp.get("batch_info", {}).get("batch_number", ""),
         origin_country=dpp.get("batch_info", {}).get("origin_country", "India"),
         conversion_method=dpp.get("source_document", {}).get("conversion_method", "manual"),
+        document_type=dpp.get("source_document", {}).get("document_type_code", "tds"),
         carbon_footprint=carbon.get("value", 0),
         standards_count=len(dpp.get("standards_compliance", [])),
         properties_count=len(dpp.get("technical_properties", {})),
+        confidence_score=overall_confidence,
+        confidence_details=json.dumps(confidence),
+        source_file_name=dpp.get("_source_file_name", ""),
         qr_code_path=passport_id,
         qr_code_data=None,
         dpp_json=json.dumps(dpp, ensure_ascii=False),

@@ -1,16 +1,32 @@
-import { useState, useEffect } from 'react';
-import { Database, Download, Trash2, X, FileJson, Loader2, Search } from 'lucide-react';
+import type { ChangeEvent } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { Database, Download, Trash2, X, FileJson, Loader2, Search, RefreshCw, FileSpreadsheet, Upload, Check, AlertCircle, Pencil, FileText } from 'lucide-react';
 import { api, resolveAssetUrl } from '../api';
+import type { PassportSummary, PassportDetail } from '../types';
 
 export function PassportsView() {
-  const [passports, setPassports] = useState<any[]>([]);
+  const [passports, setPassports] = useState<PassportSummary[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedId, setSelectedId] = useState<string | number | null>(null);
-  const [detailData, setDetailData] = useState<any>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [detailData, setDetailData] = useState<PassportDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+
+  const [exporting, setExporting] = useState<'csv' | 'excel' | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ message: string; errors: string[] } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [editing, setEditing] = useState(false);
+  const [editFields, setEditFields] = useState({ product_name: '', manufacturer: '', category: '', description: '' });
+  const [saving, setSaving] = useState(false);
+  const [pdfExporting, setPdfExporting] = useState(false);
+  const [ifcExporting, setIfcExporting] = useState(false);
+
   const filteredPassports = passports.filter((passport) => {
     const haystack = [
       passport.passport_id,
@@ -27,7 +43,8 @@ export function PassportsView() {
     setError('');
     try {
       const data = await api.getPassports();
-      setPassports(Array.isArray(data) ? data : []);
+      setPassports(data.items);
+      setTotalCount(data.total);
     } catch (err: unknown) {
       setPassports([]);
       setError(err instanceof Error ? err.message : 'Could not load saved passports. Check backend connection.');
@@ -40,7 +57,7 @@ export function PassportsView() {
     fetchPassports();
   }, []);
 
-  const openDetail = async (id: string | number) => {
+  const openDetail = async (id: number) => {
     setSelectedId(id);
     setDetailLoading(true);
     setActionError('');
@@ -59,17 +76,81 @@ export function PassportsView() {
   const closeDetail = () => {
     setSelectedId(null);
     setDetailData(null);
+    setDeleteConfirmId(null);
+    setEditing(false);
   };
 
-  const handleDelete = async (id: string | number) => {
-    if (!confirm("Are you sure you want to delete this passport?")) return;
+  const startEditing = () => {
+    if (!detailData) return;
+    setEditFields({
+      product_name: detailData.dpp_json?.product_name || detailData.product_name || '',
+      manufacturer: detailData.dpp_json?.manufacturer || detailData.manufacturer || '',
+      category: detailData.dpp_json?.category || detailData.category || '',
+      description: detailData.dpp_json?.description || '',
+    });
+    setEditing(true);
+  };
+
+  const saveEdit = async () => {
+    if (!detailData) return;
+    setSaving(true);
+    try {
+      await api.updatePassport(detailData.id, editFields);
+      setEditing(false);
+      const updated = await api.getPassport(detailData.id);
+      setDetailData(updated);
+      setPassports(prev => prev.map(p => p.id === detailData.id ? { ...p, product_name: editFields.product_name, manufacturer: editFields.manufacturer, category: editFields.category } : p));
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Update failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePdfExport = async (id: number) => {
+    setPdfExporting(true);
+    try {
+      const blob = await api.exportPassportPdf(id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `DPP-${detailData?.passport_id || id}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'PDF export failed');
+    } finally {
+      setPdfExporting(false);
+    }
+  };
+
+  const handleIfcExport = async (id: number) => {
+    setIfcExporting(true);
+    try {
+      const blob = await api.exportPassportIfc(id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `DPP-${detailData?.passport_id || id}.ifc`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'IFC export failed');
+    } finally {
+      setIfcExporting(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
     try {
       await api.deletePassport(id);
       setPassports(passports.filter(p => p.id !== id));
+      setTotalCount(prev => prev - 1);
       closeDetail();
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Failed to delete passport.');
     }
+    setDeleteConfirmId(null);
   };
 
   const downloadJson = () => {
@@ -80,6 +161,45 @@ export function PassportsView() {
     a.href = url;
     a.download = `dpp-${detailData.passport_id}.json`;
     a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExport = async (format: 'csv' | 'excel') => {
+    setExporting(format);
+    setActionError('');
+    try {
+      const blob = format === 'csv' ? await api.exportCsv() : await api.exportExcel();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = format === 'csv' ? `dpp-passports.csv` : `dpp-passports.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : `${format.toUpperCase()} export failed`);
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const handleImport = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportResult(null);
+    setActionError('');
+    try {
+      const result = await api.importSpreadsheet(file);
+      setImportResult({ message: result.message, errors: result.errors });
+      if (result.imported > 0) {
+        await fetchPassports();
+      }
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Import failed');
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   return (
@@ -101,10 +221,77 @@ export function PassportsView() {
             />
           </div>
           <div className="bg-[#1a1d27] border border-[#2e3245] px-5 py-2 rounded-full text-sm font-bold text-white self-start sm:self-auto">
-            {filteredPassports.length} Records
+            {totalCount} Records
           </div>
         </div>
       </div>
+
+      {/* Import / Export toolbar */}
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <span className="text-xs font-semibold text-[#63677a] uppercase tracking-wider mr-1">
+          <FileSpreadsheet className="w-4 h-4 inline -mt-0.5 mr-1" />Spreadsheet
+        </span>
+        <button
+          onClick={() => handleExport('csv')}
+          disabled={exporting !== null || totalCount === 0}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium bg-[#1a1d27] border border-[#2e3245] text-white hover:border-emerald-500/40 hover:text-emerald-400 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {exporting === 'csv' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+          Export CSV
+        </button>
+        <button
+          onClick={() => handleExport('excel')}
+          disabled={exporting !== null || totalCount === 0}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium bg-[#1a1d27] border border-[#2e3245] text-white hover:border-emerald-500/40 hover:text-emerald-400 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {exporting === 'excel' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+          Export Excel
+        </button>
+
+        <div className="w-px h-6 bg-[#2e3245] mx-1" />
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv,.xlsx,.xls"
+          onChange={handleImport}
+          className="hidden"
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={importing}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium bg-[#1a1d27] border border-[#2e3245] text-white hover:border-blue-500/40 hover:text-blue-400 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {importing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+          Import Spreadsheet
+        </button>
+      </div>
+
+      {/* Import result banner */}
+      {importResult && (
+        <div className={`rounded-2xl p-4 mb-6 border ${importResult.errors.length > 0 ? 'bg-amber-500/10 border-amber-500/20' : 'bg-emerald-500/10 border-emerald-500/20'}`}>
+          <div className="flex items-start gap-3">
+            {importResult.errors.length > 0 ? (
+              <AlertCircle className="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0" />
+            ) : (
+              <Check className="w-5 h-5 text-emerald-400 mt-0.5 flex-shrink-0" />
+            )}
+            <div className="flex-1">
+              <p className="text-white font-medium">{importResult.message}</p>
+              {importResult.errors.length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {importResult.errors.map((err, i) => (
+                    <li key={i} className="text-sm text-amber-300/70">{err}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <button onClick={() => setImportResult(null)} className="text-[#8b8fa3] hover:text-white">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {actionError && (
         <div className="bg-[#ef4444]/10 border border-[#ef4444]/20 rounded-2xl p-4 mb-6 text-[#fecaca] font-medium">
@@ -118,13 +305,25 @@ export function PassportsView() {
         <div className="text-center py-20 sm:py-32 px-5 border-2 border-dashed border-[#ef4444]/30 rounded-2xl sm:rounded-[2rem] bg-[#ef4444]/5">
           <Database className="w-16 h-16 text-[#ef4444]/50 mx-auto mb-6" />
           <h3 className="text-2xl font-bold text-white mb-3">Registry unavailable</h3>
-          <p className="text-[#8b8fa3] text-lg max-w-xl mx-auto">{error}</p>
+          <p className="text-[#8b8fa3] text-lg max-w-xl mx-auto mb-6">{error}</p>
+          <button
+            onClick={fetchPassports}
+            className="inline-flex items-center bg-[#242736] hover:bg-[#2e3245] text-white px-6 py-3 rounded-full font-bold transition-colors border border-[#2e3245]"
+          >
+            <RefreshCw className="w-4 h-4 mr-2" /> Retry
+          </button>
         </div>
       ) : passports.length === 0 ? (
         <div className="text-center py-20 sm:py-32 px-5 border-2 border-dashed border-[#2e3245] rounded-2xl sm:rounded-[2rem] bg-[#1a1d27]/30">
           <Database className="w-16 h-16 text-[#2e3245] mx-auto mb-6" />
           <h3 className="text-2xl font-bold text-white mb-3">No passports found</h3>
-          <p className="text-[#8b8fa3] text-lg max-w-xl mx-auto">Convert your first Technical Data Sheet to get started. For a polished demo, keep one approved sample record in Supabase.</p>
+          <p className="text-[#8b8fa3] text-lg max-w-xl mx-auto mb-2">Convert your first Technical Data Sheet or import a spreadsheet to get started.</p>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="mt-4 inline-flex items-center gap-2 bg-[#242736] hover:bg-[#2e3245] text-white px-6 py-3 rounded-full font-bold transition-colors border border-[#2e3245]"
+          >
+            <Upload className="w-4 h-4" /> Import from Spreadsheet
+          </button>
         </div>
       ) : filteredPassports.length === 0 ? (
         <div className="text-center py-20 sm:py-32 px-5 border-2 border-dashed border-[#2e3245] rounded-2xl sm:rounded-[2rem] bg-[#1a1d27]/30">
@@ -135,8 +334,8 @@ export function PassportsView() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {filteredPassports.map(p => (
-            <div 
-              key={p.id} 
+            <div
+              key={p.id}
               onClick={() => openDetail(p.id)}
               className="bg-[#1a1d27]/80 backdrop-blur-sm border border-[#2e3245] hover:border-white/50 rounded-2xl p-5 sm:p-6 cursor-pointer transition-all duration-300 hover:-translate-y-1 group shadow-lg"
             >
@@ -173,6 +372,7 @@ export function PassportsView() {
         </div>
       )}
 
+      {/* Detail Modal */}
       {selectedId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8 bg-black/80 backdrop-blur-md">
           <div className="bg-[#1a1d27] border border-[#2e3245] rounded-3xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
@@ -188,7 +388,7 @@ export function PassportsView() {
                     <X className="w-5 h-5" />
                   </button>
                 </div>
-                
+
                 <div className="flex-1 overflow-y-auto p-5 sm:p-8 flex flex-col lg:flex-row gap-6 sm:gap-8 bg-[#1a1d27]">
                   <div className="lg:w-1/3 space-y-6">
                     <div className="bg-[#0f1117] p-5 sm:p-8 rounded-2xl border border-[#2e3245] text-center shadow-inner">
@@ -220,16 +420,114 @@ export function PassportsView() {
                   </div>
                 </div>
 
-                <div className="flex flex-col sm:flex-row justify-between items-center p-6 border-t border-[#2e3245] bg-[#0f1117] gap-4">
-                  <button onClick={() => handleDelete(detailData.id)} className="flex items-center text-[#ef4444] hover:bg-[#ef4444]/10 px-6 py-3 rounded-full font-bold transition-colors w-full sm:w-auto justify-center">
-                    <Trash2 className="w-5 h-5 mr-2" /> Delete Record
-                  </button>
-                  <button onClick={downloadJson} className="flex items-center bg-white text-black px-8 py-3 rounded-full font-bold hover:bg-gray-200 transition-colors w-full sm:w-auto justify-center shadow-lg">
-                    <Download className="w-5 h-5 mr-2" /> Download JSON
-                  </button>
+                <div className="flex flex-wrap justify-between items-center p-6 border-t border-[#2e3245] bg-[#0f1117] gap-3">
+                  <div className="flex gap-2">
+                    <button onClick={() => setDeleteConfirmId(detailData.id)} className="flex items-center text-[#ef4444] hover:bg-[#ef4444]/10 px-4 py-2.5 rounded-full font-medium transition-colors text-sm">
+                      <Trash2 className="w-4 h-4 mr-1.5" /> Delete
+                    </button>
+                    <button onClick={startEditing} className="flex items-center text-blue-400 hover:bg-blue-500/10 px-4 py-2.5 rounded-full font-medium transition-colors text-sm">
+                      <Pencil className="w-4 h-4 mr-1.5" /> Edit
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handlePdfExport(detailData.id)}
+                      disabled={pdfExporting}
+                      className="flex items-center bg-[#242736] text-white px-5 py-2.5 rounded-full font-medium hover:bg-[#2e3245] transition-colors text-sm border border-[#2e3245] disabled:opacity-50"
+                    >
+                      {pdfExporting ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <FileText className="w-4 h-4 mr-1.5" />} PDF
+                    </button>
+                    <button
+                      onClick={() => handleIfcExport(detailData.id)}
+                      disabled={ifcExporting}
+                      className="flex items-center bg-[#242736] text-white px-5 py-2.5 rounded-full font-medium hover:bg-[#2e3245] transition-colors text-sm border border-[#2e3245] disabled:opacity-50"
+                    >
+                      {ifcExporting ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Database className="w-4 h-4 mr-1.5" />} IFC
+                    </button>
+                    <button onClick={downloadJson} className="flex items-center bg-white text-black px-6 py-2.5 rounded-full font-bold hover:bg-gray-200 transition-colors text-sm shadow-lg">
+                      <Download className="w-4 h-4 mr-1.5" /> JSON
+                    </button>
+                  </div>
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {editing && detailData && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#1a1d27] border border-blue-500/30 rounded-2xl p-6 sm:p-8 max-w-lg w-full shadow-2xl">
+            <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+              <Pencil className="w-5 h-5 text-blue-400" /> Edit Passport
+            </h3>
+            <div className="space-y-4">
+              {(['product_name', 'manufacturer', 'category', 'description'] as const).map(field => (
+                <div key={field}>
+                  <label className="text-xs font-semibold text-[#8b8fa3] uppercase tracking-wider mb-1.5 block">
+                    {field.replace('_', ' ')}
+                  </label>
+                  {field === 'description' ? (
+                    <textarea
+                      value={editFields[field]}
+                      onChange={e => setEditFields(prev => ({ ...prev, [field]: e.target.value }))}
+                      rows={3}
+                      className="w-full bg-[#0f1117] border border-[#2e3245] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500/50 transition-colors resize-none"
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      value={editFields[field]}
+                      onChange={e => setEditFields(prev => ({ ...prev, [field]: e.target.value }))}
+                      className="w-full bg-[#0f1117] border border-[#2e3245] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500/50 transition-colors"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setEditing(false)}
+                className="flex-1 bg-[#242736] hover:bg-[#2e3245] text-white py-3 rounded-full font-bold transition-colors border border-[#2e3245]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveEdit}
+                disabled={saving}
+                className="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-full font-bold transition-colors disabled:opacity-50"
+              >
+                {saving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmId !== null && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#1a1d27] border border-[#ef4444]/30 rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl">
+            <div className="w-14 h-14 bg-[#ef4444]/10 rounded-full flex items-center justify-center mx-auto mb-5">
+              <Trash2 className="w-7 h-7 text-[#ef4444]" />
+            </div>
+            <h3 className="text-xl font-bold text-white text-center mb-2">Delete this passport?</h3>
+            <p className="text-[#8b8fa3] text-center mb-8">This action cannot be undone. The DPP record and its QR code will be permanently removed.</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                className="flex-1 bg-[#242736] hover:bg-[#2e3245] text-white py-3 rounded-full font-bold transition-colors border border-[#2e3245]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDelete(deleteConfirmId)}
+                className="flex-1 bg-[#ef4444] hover:bg-[#dc2626] text-white py-3 rounded-full font-bold transition-colors"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -237,7 +535,7 @@ export function PassportsView() {
   );
 }
 
-function DetailRow({ label, value, mono = false, capitalize = false }: { label: string, value: string, mono?: boolean, capitalize?: boolean }) {
+function DetailRow({ label, value, mono = false, capitalize = false }: { label: string; value: string; mono?: boolean; capitalize?: boolean }) {
   return (
     <div className="flex justify-between items-center border-b border-[#2e3245] pb-3 last:border-0 last:pb-0">
       <span className="text-[#8b8fa3] text-sm font-medium">{label}</span>

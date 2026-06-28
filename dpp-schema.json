@@ -13,7 +13,10 @@
     "technical_properties",
     "standards_compliance",
     "batch_info",
-    "source_document"
+    "source_document",
+    "data_rights",
+    "evidence",
+    "audit_trail"
   ],
   "properties": {
     "dpp_version": {
@@ -82,6 +85,20 @@
       "type": "object",
       "required": ["type", "conversion_method", "converted_by", "conversion_date"],
       "description": "Provenance of the original TDS document and conversion metadata"
+    },
+    "data_rights": {
+      "type": "object",
+      "required": ["permission_status", "rights_holder", "allowed_uses"],
+      "description": "Manufacturer permission, data reuse rights, and publication constraints"
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["minimum_confidence_required", "field_sources"],
+      "description": "Field-level citations, confidence threshold, and quality notes"
+    },
+    "audit_trail": {
+      "type": "array",
+      "description": "Append-only lifecycle events for DPP creation, review, publication, and updates"
     }
   }
 }

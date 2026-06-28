@@ -2,15 +2,16 @@ import { useState, useEffect, ChangeEvent } from 'react';
 import { ArrowLeft, AlertTriangle, CheckCircle, Download, Check, FileJson, QrCode, Loader2 } from 'lucide-react';
 import { api } from '../api';
 import { Input } from '../components/Input';
-import type { ConversionResult, SaveResult, DppJson, TechnicalProperty, ViewName } from '../types';
+import type { ConversionResult, SaveResult, DppJson, TechnicalProperty } from '../types';
 
 interface ReviewViewProps {
-  setView: (v: ViewName) => void;
+  setView: (v: string) => void;
   data: ConversionResult;
   onSaved: (data: SaveResult) => void;
+  sidebarCollapsed?: boolean;
 }
 
-export function ReviewView({ setView, data, onSaved }: ReviewViewProps) {
+export function ReviewView({ setView, data, onSaved, sidebarCollapsed = false }: ReviewViewProps) {
   const [dpp, setDpp] = useState<DppJson>(data.extracted_dpp);
   const [loading, setLoading] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
@@ -19,6 +20,9 @@ export function ReviewView({ setView, data, onSaved }: ReviewViewProps) {
 
   const warnings = data.warnings || [];
   const isValid = warnings.length === 0;
+  const minimumConfidence = dpp.evidence?.minimum_confidence_required ?? 90;
+  const overallConfidence = dpp.confidence?.overall ?? 0;
+  const blocksSave = overallConfidence > 0 && overallConfidence < minimumConfidence;
 
   useEffect(() => {
     loadQrPreview();
@@ -98,7 +102,7 @@ export function ReviewView({ setView, data, onSaved }: ReviewViewProps) {
         </div>
         <div className={`self-start sm:self-auto flex items-center px-4 py-2.5 rounded-full text-sm font-semibold border ${isValid ? 'bg-[#22c55e]/10 text-[#22c55e] border-[#22c55e]/20' : 'bg-[#f59e0b]/10 text-[#f59e0b] border-[#f59e0b]/20'}`}>
           {isValid ? <CheckCircle className="w-5 h-5 mr-2" /> : <AlertTriangle className="w-5 h-5 mr-2" />}
-          {isValid ? 'All Valid' : `${warnings.length} Warning(s)`}
+          {blocksSave ? `Needs ${minimumConfidence}% confidence` : isValid ? 'All Valid' : `${warnings.length} Warning(s)`}
         </div>
       </div>
 
@@ -116,6 +120,49 @@ export function ReviewView({ setView, data, onSaved }: ReviewViewProps) {
           <ul className="list-disc pl-7 text-[#f59e0b]/80 space-y-1 text-sm font-medium">
             {warnings.map((w: string, i: number) => <li key={i}>{w}</li>)}
           </ul>
+        </div>
+      )}
+
+      {/* Confidence Score Bar */}
+      {dpp.confidence && dpp.confidence.overall > 0 && (
+        <div className="bg-[#1a1d27]/80 border border-[#2e3245] rounded-2xl p-5 mb-8">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold text-[#8b8fa3] uppercase tracking-wider">AI Extraction Confidence</h4>
+            <span className={`text-lg font-bold ${dpp.confidence.overall >= 90 ? 'text-green-400' : dpp.confidence.overall >= 70 ? 'text-yellow-400' : 'text-red-400'}`}>
+              {dpp.confidence.overall}%
+            </span>
+          </div>
+          <div className="w-full bg-[#0f1117] rounded-full h-2 mb-4">
+            <div
+              className={`h-full rounded-full transition-all ${dpp.confidence.overall >= 90 ? 'bg-green-500' : dpp.confidence.overall >= 70 ? 'bg-yellow-500' : 'bg-red-500'}`}
+              style={{ width: `${dpp.confidence.overall}%` }}
+            />
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: 'Product Name', score: dpp.confidence.product_name },
+              { label: 'Manufacturer', score: dpp.confidence.manufacturer },
+              { label: 'Tech Properties', score: dpp.confidence.technical_properties },
+              { label: 'Standards', score: dpp.confidence.standards_compliance },
+            ].map(({ label, score }) => (
+              <div key={label} className="text-center">
+                <div className={`text-sm font-mono font-bold ${score >= 90 ? 'text-green-400' : score >= 70 ? 'text-yellow-400' : score > 0 ? 'text-red-400' : 'text-[#63677a]'}`}>
+                  {score > 0 ? `${score}%` : '—'}
+                </div>
+                <div className="text-xs text-[#63677a] mt-0.5">{label}</div>
+              </div>
+            ))}
+          </div>
+          {data.document_type && (
+            <div className="mt-3 text-xs text-[#8b8fa3]">
+              Document type: <span className="uppercase font-medium text-white">{data.document_type}</span>
+            </div>
+          )}
+          {blocksSave && (
+            <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+              Saving is blocked until the reviewed record reaches at least {minimumConfidence}% confidence.
+            </div>
+          )}
         </div>
       )}
 
@@ -162,6 +209,33 @@ export function ReviewView({ setView, data, onSaved }: ReviewViewProps) {
                 <p className="text-[#8b8fa3] text-sm italic">No standards listed.</p>
               )}
             </div>
+          </div>
+
+          <div className="bg-[#1a1d27]/80 backdrop-blur-sm border border-[#2e3245] rounded-2xl p-5 sm:p-8 shadow-lg">
+            <h3 className="text-xl font-bold text-white mb-4">Data Rights & Evidence</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+              <div className="bg-[#242736] border border-[#2e3245] rounded-xl p-4">
+                <p className="text-xs font-semibold text-[#8b8fa3] uppercase tracking-wider mb-1">Permission</p>
+                <p className="text-white font-medium">{dpp.data_rights?.permission_status || 'internal_review'}</p>
+                <p className="text-xs text-[#63677a] mt-2">{dpp.data_rights?.license_notes || 'Confirm manufacturer permission before external publication.'}</p>
+              </div>
+              <div className="bg-[#242736] border border-[#2e3245] rounded-xl p-4">
+                <p className="text-xs font-semibold text-[#8b8fa3] uppercase tracking-wider mb-1">Evidence</p>
+                <p className="text-white font-medium">{dpp.evidence?.field_sources?.length || 0} field source(s)</p>
+                <p className="text-xs text-[#63677a] mt-2">{dpp.evidence?.quality_notes || 'Add field citations during review.'}</p>
+              </div>
+            </div>
+            {dpp.evidence?.field_sources?.length ? (
+              <div className="mt-4 space-y-2">
+                {dpp.evidence.field_sources.slice(0, 5).map((source, index) => (
+                  <div key={`${source.field}-${index}`} className="flex items-center justify-between gap-3 text-xs bg-[#0f1117] rounded-lg px-3 py-2">
+                    <span className="text-white">{source.field}</span>
+                    <span className="text-[#8b8fa3] truncate">{source.source_title}</span>
+                    <span className={source.confidence >= minimumConfidence ? 'text-green-400' : 'text-yellow-400'}>{source.confidence}%</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -217,7 +291,7 @@ export function ReviewView({ setView, data, onSaved }: ReviewViewProps) {
       </div>
 
       {/* Bottom Action Bar */}
-      <div className="fixed bottom-0 left-0 right-0 md:pl-64 border-t border-[#2e3245] bg-[#0f1117]/90 backdrop-blur-xl p-3 sm:p-4 z-40">
+      <div className={`fixed bottom-0 left-0 right-0 ${sidebarCollapsed ? '' : 'md:pl-64'} border-t border-[#2e3245] bg-[#0f1117]/90 backdrop-blur-xl p-3 sm:p-4 z-40`}>
         <div className="max-w-7xl mx-auto flex flex-col lg:flex-row lg:justify-between lg:items-center px-1 sm:px-4 gap-3">
           <p className="text-[#8b8fa3] text-sm font-medium hidden lg:block">Verify all properties before generating the final passport.</p>
           <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 sm:gap-3 w-full lg:w-auto lg:ml-auto">
@@ -241,7 +315,7 @@ export function ReviewView({ setView, data, onSaved }: ReviewViewProps) {
             </button>
             <button
               onClick={handleApprove}
-              disabled={loading}
+              disabled={loading || blocksSave}
               className="col-span-2 sm:col-span-1 justify-center flex items-center bg-white text-black px-5 sm:px-8 py-3 rounded-full font-bold hover:bg-gray-200 transition-all disabled:opacity-50 shadow-[0_0_20px_rgba(255,255,255,0.2)] text-sm sm:text-base"
             >
               {loading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Check className="w-5 h-5 mr-2" />}

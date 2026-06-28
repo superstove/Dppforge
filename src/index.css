@@ -7,10 +7,26 @@
 }
 
 body {
+  min-width: 320px;
+  margin: 0;
   background-color: #000;
   color: #fff;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  max-width: 100%;
 }
 
 .custom-scrollbar::-webkit-scrollbar {

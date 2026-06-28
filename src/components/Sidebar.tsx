@@ -1,4 +1,4 @@
-import { Home, Plus, Database, Settings, LayoutDashboard, HardHat, X } from 'lucide-react';
+import { Home, Plus, Database, Settings, LayoutDashboard, HardHat, X, BarChart3, Factory, Globe, BookOpen, Shield, Bell } from 'lucide-react';
 
 export function Sidebar({
   currentView,
@@ -16,12 +16,21 @@ export function Sidebar({
   onCollapse?: () => void;
 }) {
   const navItems = [
-    { id: 'home', label: 'Home', icon: Home },
-    { id: 'manual', label: 'Manual Entry', icon: Plus },
-    { id: 'upload', label: 'Upload PDF', icon: LayoutDashboard },
-    { id: 'passports', label: 'Saved Passports', icon: Database },
-    { id: 'settings', label: 'Settings', icon: Settings },
+    { id: 'home', path: '/', label: 'Home', icon: Home },
+    { id: 'dashboard', path: '/dashboard', label: 'Dashboard', icon: BarChart3 },
+    { id: 'manual', path: '/manual', label: 'Manual Entry', icon: Plus },
+    { id: 'upload', path: '/upload', label: 'Upload PDF', icon: LayoutDashboard },
+    { id: 'passports', path: '/passports', label: 'Saved Passports', icon: Database },
+    { id: 'manufacturers', path: '/manufacturers', label: 'Manufacturers', icon: Factory },
+    { id: 'market', path: '/market', label: 'Market Coverage', icon: Globe },
+    { id: 'compliance', path: '/compliance', label: 'EU Compliance', icon: Shield },
+    { id: 'notifications', path: '/notifications', label: 'Alerts & Languages', icon: Bell },
+    { id: 'tutorial', path: '/tutorial', label: 'Tutorial', icon: BookOpen },
+    { id: 'settings', path: '/settings', label: 'Settings', icon: Settings },
   ];
+
+  const isActive = (item: { id: string; path: string }) =>
+    currentView === item.id || currentView === item.path;
 
   const handleNavigate = (view: string) => {
     setView(view);
@@ -70,7 +79,7 @@ export function Sidebar({
             key={item.id}
             onClick={() => handleNavigate(item.id)}
             className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-md transition-colors font-medium text-sm ${
-              currentView === item.id
+              isActive(item)
                 ? 'bg-[#1a1d27] text-white'
                 : 'text-[#8b8fa3] hover:bg-[#1a1d27] hover:text-white'
             }`}
