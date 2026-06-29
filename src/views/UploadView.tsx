@@ -68,7 +68,12 @@ export function UploadView({ setView, onReview }: UploadViewProps) {
         setBatchResults(res.results as unknown as BatchResult[]);
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Upload failed. Check backend connection and PDF format.');
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('CORS')) {
+        setError('Cannot reach the server. It may be waking up (free tier takes ~30s). Please wait a moment and try again.');
+      } else {
+        setError(msg || 'Upload failed. Check backend connection and PDF format.');
+      }
     } finally {
       setLoading(false);
     }
