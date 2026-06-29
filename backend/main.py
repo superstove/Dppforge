@@ -118,7 +118,7 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-cors_env = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
+cors_env = os.getenv("CORS_ORIGINS", "http://localhost,http://localhost:3000,http://localhost:5173,capacitor://localhost,http://10.0.2.2")
 cors_origins = [o.strip() for o in cors_env.split(",") if o.strip()]
 
 app.add_middleware(
