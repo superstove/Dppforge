@@ -2,8 +2,6 @@
 Passport management — list, view, download QR, delete, import/export DPP records.
 """
 
-from __future__ import annotations
-
 import csv
 import io
 import json

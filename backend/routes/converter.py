@@ -5,8 +5,6 @@ TDS-to-JSON Converter Routes
 Manual + Automatic conversion endpoints. No auth required (standalone app).
 """
 
-from __future__ import annotations
-
 import json
 import os
 import re
