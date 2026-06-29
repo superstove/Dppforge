@@ -65,16 +65,25 @@ if not DATABASE_URL.startswith("sqlite"):
             existing = {c["name"] for c in inspector.get_columns("dpp_records")}
             migrations = [
                 ("manufacturer_id", "ALTER TABLE dpp_records ADD COLUMN manufacturer_id INTEGER REFERENCES manufacturers(id)"),
+                ("category", "ALTER TABLE dpp_records ADD COLUMN category VARCHAR DEFAULT ''"),
+                ("batch_number", "ALTER TABLE dpp_records ADD COLUMN batch_number VARCHAR DEFAULT ''"),
+                ("origin_country", "ALTER TABLE dpp_records ADD COLUMN origin_country VARCHAR DEFAULT 'India'"),
+                ("conversion_method", "ALTER TABLE dpp_records ADD COLUMN conversion_method VARCHAR DEFAULT 'manual'"),
+                ("document_type", "ALTER TABLE dpp_records ADD COLUMN document_type VARCHAR DEFAULT 'tds'"),
                 ("carbon_footprint", "ALTER TABLE dpp_records ADD COLUMN carbon_footprint FLOAT DEFAULT 0.0"),
                 ("standards_count", "ALTER TABLE dpp_records ADD COLUMN standards_count INTEGER DEFAULT 0"),
                 ("properties_count", "ALTER TABLE dpp_records ADD COLUMN properties_count INTEGER DEFAULT 0"),
                 ("confidence_score", "ALTER TABLE dpp_records ADD COLUMN confidence_score FLOAT DEFAULT 0.0"),
                 ("confidence_details", "ALTER TABLE dpp_records ADD COLUMN confidence_details TEXT DEFAULT '{}'"),
-                ("document_type", "ALTER TABLE dpp_records ADD COLUMN document_type VARCHAR DEFAULT 'tds'"),
+                ("qr_code_path", "ALTER TABLE dpp_records ADD COLUMN qr_code_path VARCHAR DEFAULT ''"),
+                ("qr_code_data", "ALTER TABLE dpp_records ADD COLUMN qr_code_data BYTEA"),
+                ("dpp_json", "ALTER TABLE dpp_records ADD COLUMN dpp_json TEXT DEFAULT '{}'"),
+                ("status", "ALTER TABLE dpp_records ADD COLUMN status VARCHAR DEFAULT 'active'"),
                 ("verified_by", "ALTER TABLE dpp_records ADD COLUMN verified_by VARCHAR DEFAULT ''"),
                 ("verified_at", "ALTER TABLE dpp_records ADD COLUMN verified_at TIMESTAMP"),
                 ("source_file_name", "ALTER TABLE dpp_records ADD COLUMN source_file_name VARCHAR DEFAULT ''"),
                 ("extraction_notes", "ALTER TABLE dpp_records ADD COLUMN extraction_notes TEXT DEFAULT ''"),
+                ("updated_at", "ALTER TABLE dpp_records ADD COLUMN updated_at TIMESTAMP DEFAULT NOW()"),
             ]
             for col_name, sql in migrations:
                 if col_name not in existing:
