@@ -183,7 +183,7 @@ def export_excel(db: Session = Depends(get_db)):
     )
 
 
-@router.post("/import/spreadsheet")
+@router.post("/import/spreadsheet", response_model=None)
 async def import_spreadsheet(file: UploadFile = File(...), db: Session = Depends(get_db)):
     if not file.filename:
         raise HTTPException(400, "No file uploaded")

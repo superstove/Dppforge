@@ -661,7 +661,7 @@ def manual_convert(payload: ManualInput):
     }
 
 
-@router.post("/upload")
+@router.post("/upload", response_model=None)
 @limiter.limit("10/minute")
 async def upload_extract(
     request: Request,
@@ -707,7 +707,7 @@ async def upload_extract(
     }
 
 
-@router.post("/batch-upload")
+@router.post("/batch-upload", response_model=None)
 @limiter.limit("5/minute")
 async def batch_upload(
     request: Request,
