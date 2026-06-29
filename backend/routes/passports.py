@@ -731,7 +731,7 @@ def _generate_dpp_pdf(dpp: dict, record: DPPRecord) -> bytes:
 
 @router.delete("/{record_id}")
 def delete_passport(record_id: int, db: Session = Depends(get_db)):
-    if os.getenv("ENABLE_PASSPORT_DELETE", "").lower() not in {"1", "true", "yes"}:
+    if os.getenv("ENABLE_PASSPORT_DELETE", "true").lower() in {"0", "false", "no"}:
         raise HTTPException(status_code=403, detail="Passport deletion is disabled on this deployment.")
     record = db.query(DPPRecord).filter(DPPRecord.id == record_id).first()
     if not record:

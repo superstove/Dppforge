@@ -95,6 +95,13 @@ def test_save_and_list_and_delete():
     assert qr.status_code == 200
     assert qr.headers["content-type"] == "image/png"
 
+    deleted = client.delete(f"/api/passports/{record_id}")
+    assert deleted.status_code == 200
+    assert deleted.json()["status"] == "deleted"
+
+    missing = client.get(f"/api/passports/{record_id}")
+    assert missing.status_code == 404
+
 
 def test_upload_rejects_non_pdf():
     res = client.post("/api/convert/upload", files={"file": ("test.txt", b"not a pdf", "text/plain")})
