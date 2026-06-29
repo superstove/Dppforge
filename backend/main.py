@@ -71,6 +71,10 @@ if not DATABASE_URL.startswith("sqlite"):
                 ("confidence_score", "ALTER TABLE dpp_records ADD COLUMN confidence_score FLOAT DEFAULT 0.0"),
                 ("confidence_details", "ALTER TABLE dpp_records ADD COLUMN confidence_details TEXT DEFAULT '{}'"),
                 ("document_type", "ALTER TABLE dpp_records ADD COLUMN document_type VARCHAR DEFAULT 'tds'"),
+                ("verified_by", "ALTER TABLE dpp_records ADD COLUMN verified_by VARCHAR DEFAULT ''"),
+                ("verified_at", "ALTER TABLE dpp_records ADD COLUMN verified_at TIMESTAMP"),
+                ("source_file_name", "ALTER TABLE dpp_records ADD COLUMN source_file_name VARCHAR DEFAULT ''"),
+                ("extraction_notes", "ALTER TABLE dpp_records ADD COLUMN extraction_notes TEXT DEFAULT ''"),
             ]
             for col_name, sql in migrations:
                 if col_name not in existing:
