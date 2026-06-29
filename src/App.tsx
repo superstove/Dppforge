@@ -91,7 +91,7 @@ function AppShell() {
           sidebarCollapsed={sidebarCollapsed}
         />
 
-        <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto relative z-10 custom-scrollbar">
+        <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto relative z-10 custom-scrollbar touch-scroll">
           <Routes>
             <Route path="/" element={<HomeView setView={setView} />} />
             <Route path="/manual" element={<ManualEntryView setView={setView} onReview={handleReview} />} />

@@ -37,7 +37,7 @@ export function WelcomeModal() {
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
       <div className="absolute inset-0" onClick={handleClose}></div>
 
-      <div className="relative bg-[#1a1d27] border border-[#2e3245] rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300">
+      <div className="relative bg-[#1a1d27] border border-[#2e3245] rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90svh] overflow-y-auto custom-scrollbar animate-in fade-in zoom-in-95 duration-300">
         <button
           onClick={handleClose}
           className="absolute top-4 right-4 p-2 text-[#8b8fa3] hover:text-white hover:bg-[#2a2d3d] rounded-full transition-colors z-10"
@@ -101,7 +101,7 @@ export function WelcomeModal() {
               <p className="text-[#8b8fa3] text-sm">Use the sidebar on the left to navigate between pages. Here's what each one does:</p>
             </div>
 
-            <div className="space-y-1.5 max-h-[380px] overflow-y-auto custom-scrollbar pr-1">
+            <div className="space-y-1.5 max-h-[40svh] overflow-y-auto custom-scrollbar pr-1">
               {SIDEBAR_ITEMS.map((item) => (
                 <div key={item.label} className="flex items-center gap-3 bg-[#11131a] border border-[#2e3245] rounded-xl px-4 py-3 group hover:border-[#4e5269] transition-colors">
                   <div className="w-9 h-9 rounded-lg bg-[#1a1d27] border border-[#2e3245] flex items-center justify-center flex-shrink-0 group-hover:border-white/20 transition-colors">
