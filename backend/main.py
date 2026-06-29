@@ -96,6 +96,11 @@ app.include_router(compliance.router, prefix="/api/compliance", tags=["complianc
 app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
 
 
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
+
 @app.get("/health")
 def health():
     db_url = os.getenv("DATABASE_URL", "sqlite")
