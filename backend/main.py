@@ -51,17 +51,21 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             )
         return await call_next(request)
 
-Base.metadata.create_all(bind=engine)
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as e:
+    print(f"[STARTUP] DB table creation failed: {e}")
 
 if os.getenv("DEMO_SEED_ENABLED", "").lower() in {"1", "true", "yes"}:
     from database import SessionLocal
     from demo_seed import seed_demo_record
 
-    db = SessionLocal()
     try:
+        db = SessionLocal()
         seed_demo_record(db)
-    finally:
         db.close()
+    except Exception as e:
+        print(f"[STARTUP] Demo seed failed: {e}")
 
 limiter = Limiter(key_func=get_remote_address)
 
