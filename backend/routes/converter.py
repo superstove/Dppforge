@@ -21,15 +21,12 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import DPPRecord
+from url_utils import dpp_verification_url, public_app_base_url
 from utils import generate_qr_bytes
 
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
 
-PUBLIC_APP_URL = os.getenv(
-    "PUBLIC_APP_URL",
-    os.getenv("APP_URL", os.getenv("CONSTRUCTASK_VERIFY_URL", "http://localhost:3000")),
-).rstrip("/")
 CONSTRUCTASK_URL = os.getenv("CONSTRUCTASK_URL", "https://constructask.vercel.app").rstrip("/")
 MINIMUM_SAVE_CONFIDENCE = 90
 
@@ -561,7 +558,7 @@ def build_dpp(fields: dict, batch_number: str = "", origin_country: str = "India
         },
         "qr_verification": {
             "qr_code": f"QR-{slug}-{date.today().year}",
-            "verification_url": f"{PUBLIC_APP_URL}/?passport={passport_id}",
+            "verification_url": dpp_verification_url(passport_id),
             "scan_type": "check_specification",
         },
         "confidence": {
@@ -770,7 +767,7 @@ async def batch_upload(
 
 
 @router.post("/preview-qr")
-def preview_qr(payload: SaveInput):
+def preview_qr(payload: SaveInput, request: Request):
     """Generate a QR code from DPP JSON without saving to database. Returns QR as PNG."""
     dpp = payload.dpp_json
     passport_id = dpp.get("passport_id", f"DPP-PREVIEW-{date.today().year}")
@@ -779,7 +776,7 @@ def preview_qr(payload: SaveInput):
         if payload.qr_type == "constructask"
         else dpp.get("qr_verification", {}).get(
             "verification_url",
-            f"{PUBLIC_APP_URL}/?passport={passport_id}",
+            dpp_verification_url(passport_id, request),
         )
     )
 
@@ -856,7 +853,7 @@ def save_dpp(request: Request, payload: SaveInput, db: Session = Depends(get_db)
     db.add(record)
     db.flush()
 
-    verify_url = f"{PUBLIC_APP_URL}/?passport={record.id}"
+    verify_url = dpp_verification_url(record.id, request)
     constructask_url = f"{CONSTRUCTASK_URL}/?dpp={passport_id}"
     dpp.setdefault("qr_verification", {})
     dpp["qr_verification"]["verification_url"] = verify_url
@@ -916,7 +913,7 @@ def workflow_info():
         },
         "constructask_integration": {
             "description": "Generated QR codes point to ConstructAsk verification URL",
-            "qr_url_format": f"{PUBLIC_APP_URL}/?passport=123",
+            "qr_url_format": f"{public_app_base_url()}/?passport=123",
             "import": "Saved DPP JSON files can be imported into ConstructAsk",
         },
     }

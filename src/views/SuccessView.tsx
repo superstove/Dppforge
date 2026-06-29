@@ -1,10 +1,11 @@
-import { CheckCircle, Database } from 'lucide-react';
+import { CheckCircle, Copy, Database, ExternalLink } from 'lucide-react';
 import { resolveAssetUrl } from '../api';
 import type { SaveResult } from '../types';
 
 export function SuccessView({ setView, data }: { setView: (v: string) => void; data: SaveResult }) {
   const dppQrUrl = resolveAssetUrl(data.dpp_qr_code_url || data.qr_code_url);
   const constructAskQrUrl = resolveAssetUrl(data.constructask_qr_code_url);
+  const verificationUrl = data.dpp_verification_url || data.verification_url;
 
   const downloadImage = async (url: string, filename: string) => {
     const res = await fetch(url);
@@ -38,12 +39,22 @@ export function SuccessView({ setView, data }: { setView: (v: string) => void; d
             </div>
             <p className="text-sm font-bold text-white mb-2 uppercase tracking-wider">DPP Forge QR</p>
             <p className="text-xs text-[#8b8fa3] mb-4">Stick this on the product to open the public DPP passport.</p>
-            <button
-              onClick={() => downloadImage(dppQrUrl, `${data.passport_id || 'dpp'}-dpp-forge-qr.png`)}
-              className="w-full bg-[#242736] hover:bg-[#2e3245] text-white py-3 rounded-full font-bold transition-colors border border-[#2e3245]"
-            >
-              Download
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => downloadImage(dppQrUrl, `${data.passport_id || 'dpp'}-dpp-forge-qr.png`)}
+                className="bg-[#242736] hover:bg-[#2e3245] text-white py-3 rounded-full font-bold transition-colors border border-[#2e3245]"
+              >
+                Download
+              </button>
+              {verificationUrl && (
+                <button
+                  onClick={() => navigator.clipboard?.writeText(verificationUrl)}
+                  className="flex items-center justify-center bg-[#242736] hover:bg-[#2e3245] text-white py-3 rounded-full font-bold transition-colors border border-[#2e3245]"
+                >
+                  <Copy className="w-4 h-4 mr-2" /> URL
+                </button>
+              )}
+            </div>
           </div>
           <div className="bg-[#0f1117] rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-[#2e3245] shadow-inner">
             <div className="bg-white p-4 rounded-2xl inline-block mb-5 shadow-lg">
@@ -69,6 +80,20 @@ export function SuccessView({ setView, data }: { setView: (v: string) => void; d
             <span className="text-[#8b8fa3] text-sm font-medium">Product Name</span>
             <span className="text-white font-bold">{data.product_name || 'N/A'}</span>
           </div>
+          {verificationUrl && (
+            <div className="flex flex-col gap-2 pt-3 border-t border-[#2e3245]">
+              <span className="text-[#8b8fa3] text-sm font-medium">DPP QR Redirect URL</span>
+              <a
+                href={verificationUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center text-white font-mono text-xs sm:text-sm bg-[#1a1d27] px-3 py-2 rounded-md break-all hover:text-[#a0a8bf]"
+              >
+                {verificationUrl}
+                <ExternalLink className="w-4 h-4 ml-2 shrink-0" />
+              </a>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row gap-4">

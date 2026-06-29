@@ -2,7 +2,9 @@
 
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -22,6 +24,9 @@ database.Base.metadata.create_all(bind=engine)
 
 from main import app
 from fastapi.testclient import TestClient
+import fitz
+from routes.passports import _generate_dpp_pdf
+from url_utils import public_app_base_url
 
 client = TestClient(app)
 
@@ -169,6 +174,39 @@ def test_saved_passport_contains_data_rights_evidence_and_audit_trail():
     assert detail["audit_trail"][0]["event"] == "dpp_created"
 
 
+def test_saved_passport_qr_verification_url_uses_request_host_without_public_env(monkeypatch):
+    monkeypatch.delenv("PUBLIC_APP_URL", raising=False)
+    monkeypatch.delenv("APP_URL", raising=False)
+    monkeypatch.delenv("CONSTRUCTASK_VERIFY_URL", raising=False)
+    manual = client.post("/api/convert/manual", json={
+        "product_name": "Request Host QR Product",
+        "manufacturer": "QR Corp",
+        "category": "Concrete",
+        "standards_compliance": ["EN 206"],
+        "technical_properties": {"compressive_strength": {"value": 40, "unit": "MPa"}},
+    })
+    dpp = manual.json()["extracted_dpp"]
+
+    save = client.post("/api/convert/save", json={"dpp_json": dpp})
+
+    assert save.status_code == 200
+    saved = save.json()
+    assert saved["verification_url"].startswith("http://testserver/")
+    assert "localhost" not in saved["verification_url"]
+
+    detail = client.get(f"/api/passports/{saved['id']}").json()["dpp_json"]
+    assert detail["qr_verification"]["verification_url"] == saved["verification_url"]
+
+
+def test_public_app_base_url_uses_render_external_url(monkeypatch):
+    monkeypatch.delenv("PUBLIC_APP_URL", raising=False)
+    monkeypatch.delenv("APP_URL", raising=False)
+    monkeypatch.setenv("RENDER_EXTERNAL_URL", "https://dppforge.onrender.com")
+    monkeypatch.delenv("CONSTRUCTASK_VERIFY_URL", raising=False)
+
+    assert public_app_base_url() == "https://dppforge.onrender.com"
+
+
 def test_manufacturer_claim_workflow_and_outreach_templates():
     created = client.post("/api/manufacturers/", json={
         "name": "Claimable Manufacturer",
@@ -225,3 +263,71 @@ def test_compliance_rulebook_marks_rules_as_pending_expert_validation():
     assert data["validation_status"] == "requires_expert_review"
     assert data["rules"]
     assert data["rules"][0]["source_type"] in {"regulation", "industry_reference", "internal_mapping"}
+
+
+def test_pdf_export_contains_complete_passport_sections():
+    dpp = {
+        "product_name": "Complete Tile Adhesive",
+        "manufacturer": "UltraTech",
+        "category": "Tile Adhesive",
+        "document_type": "Technical Data Sheet",
+        "description": "Polymer-modified adhesive for interior and exterior tiles.",
+        "technical_properties": {
+            "tensile_adhesion": {
+                "value": "1.50-2.00",
+                "unit": "N/mm2",
+                "test_method": "EN 12004",
+            },
+        },
+        "working_properties": {
+            "water_powder_ratio": {"value": 25, "unit": "%"},
+            "adjustability_time": {"value": 30, "unit": "minutes"},
+        },
+        "standards_compliance": ["EN 12004", "ISO 13007"],
+        "applications": ["Wall tiles", "Floor tiles"],
+        "packaging": {"size": "20 kg", "type": "moisture-resistant bag"},
+        "storage": {"conditions": "Dry covered area", "shelf_life": {"value": 12, "unit": "months"}},
+        "sustainability": {
+            "recycled_content_pct": 5,
+            "carbon_footprint": {"value": 1.2, "unit": "kgCO2e/kg"},
+        },
+        "source_document": {
+            "title": "Complete Adhesive TDS",
+            "document_type": "TDS",
+            "revision": "R2",
+        },
+        "batch_info": {"batch_number": "BATCH-42", "origin_country": "India"},
+        "qr_verification": {"verification_url": "https://example.com/passport/42"},
+    }
+    record = SimpleNamespace(
+        passport_id="DPP-COMPLETE-42",
+        conversion_method="manual",
+        confidence_score=96,
+        status="active",
+        created_at=datetime(2026, 6, 29, tzinfo=timezone.utc),
+    )
+
+    pdf_bytes = _generate_dpp_pdf(dpp, record)
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    text = "\n".join(page.get_text() for page in doc)
+
+    for expected in [
+        "Technical Properties",
+        "Tensile Adhesion",
+        "1.50-2.00",
+        "EN 12004",
+        "Working Properties",
+        "Water Powder Ratio",
+        "Adjustability Time",
+        "30",
+        "minutes",
+        "Applications",
+        "Wall tiles",
+        "Packaging and Storage",
+        "20 kg moisture-resistant bag",
+        "Source Document",
+        "Complete Adhesive TDS",
+        "Verification",
+        "https://example.com/passport/42",
+    ]:
+        assert expected in text

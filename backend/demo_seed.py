@@ -1,9 +1,9 @@
 import json
-import os
 
 from sqlalchemy.orm import Session
 
 from models import DPPRecord
+from url_utils import public_app_base_url
 from utils import generate_qr_bytes
 
 
@@ -12,7 +12,7 @@ def seed_demo_record(db: Session) -> None:
     if existing:
         return
 
-    public_url = os.getenv("PUBLIC_APP_URL", "http://localhost:3000").rstrip("/")
+    public_url = public_app_base_url()
 
     dpp = {
         "dpp_version": "1.0",

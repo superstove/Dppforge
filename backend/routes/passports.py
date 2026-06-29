@@ -9,18 +9,18 @@ import os
 import re
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session, defer
 
 from database import get_db
 from models import DPPRecord
+from url_utils import dpp_verification_url
 from utils import generate_qr_bytes
 
 router = APIRouter()
 CONSTRUCTASK_URL = os.getenv("CONSTRUCTASK_URL", "https://constructask.vercel.app").rstrip("/")
-PUBLIC_APP_URL = os.getenv("PUBLIC_APP_URL", "http://localhost:3000").rstrip("/")
 
 EXPORT_COLUMNS = [
     "passport_id", "product_name", "manufacturer", "category", "document_type",
@@ -182,7 +182,7 @@ def export_excel(db: Session = Depends(get_db)):
 
 
 @router.post("/import/spreadsheet", response_model=None)
-async def import_spreadsheet(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def import_spreadsheet(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
     if not file.filename:
         raise HTTPException(400, "No file uploaded")
 
@@ -285,7 +285,7 @@ async def import_spreadsheet(file: UploadFile = File(...), db: Session = Depends
             "packaging_and_storage": {"packaging": "", "storage": "", "shelf_life": {"value": 12, "unit": "months", "condition": ""}},
             "sustainability": {"recycled_content_pct": 0, "carbon_footprint": {"value": 0, "unit": "kgCO2e/unit"}, "recyclable": True},
             "batch_info": {"batch_number": batch_number, "production_date": str(date.today()), "origin_country": origin_country, "factory_location": ""},
-            "qr_verification": {"qr_code": f"QR-{slug}-{date.today().year}", "verification_url": f"{PUBLIC_APP_URL}/?passport={passport_id}", "scan_type": "check_specification"},
+            "qr_verification": {"qr_code": f"QR-{slug}-{date.today().year}", "verification_url": dpp_verification_url(passport_id, request), "scan_type": "check_specification"},
             "confidence": {"overall": 90, "product_name": 95, "manufacturer": 95, "technical_properties": 85, "standards_compliance": 85},
             "source_document": {"type": "Spreadsheet Import", "document_type_code": doc_type, "document_title": product_name, "revision": "", "date_issued": "", "conversion_method": "spreadsheet_import", "converted_by": "DPP Forge", "conversion_date": str(date.today())},
             "data_rights": {"permission_status": "internal_review", "rights_holder": manufacturer, "allowed_uses": ["internal_review", "manufacturer_authorized_public_qr"], "license_notes": "Confirm manufacturer permission before external publication."},
@@ -293,7 +293,7 @@ async def import_spreadsheet(file: UploadFile = File(...), db: Session = Depends
             "audit_trail": [{"event": "dpp_created", "actor": "DPP Forge", "method": "spreadsheet_import", "timestamp": now.isoformat()}],
         }
 
-        qr_url = f"{PUBLIC_APP_URL}/?passport={passport_id}"
+        qr_url = dpp_verification_url(passport_id, request)
         qr_data = generate_qr_bytes(qr_url)
 
         record = DPPRecord(
@@ -355,12 +355,12 @@ def get_passport(record_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{record_id}/qr")
-def get_qr_code(record_id: int, db: Session = Depends(get_db)):
+def get_qr_code(record_id: int, request: Request, db: Session = Depends(get_db)):
     record = db.query(DPPRecord).filter(DPPRecord.id == record_id).first()
-    if not record or not record.qr_code_data:
+    if not record:
         raise HTTPException(status_code=404, detail="QR code not found")
     return Response(
-        content=record.qr_code_data,
+        content=generate_qr_bytes(dpp_verification_url(record.id, request)),
         media_type="image/png",
         headers={"Cache-Control": "public, max-age=86400"},
     )
@@ -644,6 +644,8 @@ def _ifc_guid() -> str:
 
 
 def _generate_dpp_pdf(dpp: dict, record: DPPRecord) -> bytes:
+    from datetime import datetime
+    from xml.sax.saxutils import escape
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import mm
     from reportlab.lib.colors import HexColor
@@ -653,77 +655,173 @@ def _generate_dpp_pdf(dpp: dict, record: DPPRecord) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=20 * mm, bottomMargin=20 * mm, leftMargin=20 * mm, rightMargin=20 * mm)
     styles = getSampleStyleSheet()
+    doc_width = A4[0] - doc.leftMargin - doc.rightMargin
 
-    title_style = ParagraphStyle("DPPTitle", parent=styles["Heading1"], fontSize=18, textColor=HexColor("#1F2937"), spaceAfter=6)
-    subtitle_style = ParagraphStyle("DPPSub", parent=styles["Normal"], fontSize=10, textColor=HexColor("#6B7280"), spaceAfter=12)
-    section_style = ParagraphStyle("DPPSection", parent=styles["Heading2"], fontSize=13, textColor=HexColor("#1F2937"), spaceBefore=14, spaceAfter=6)
-    body_style = ParagraphStyle("DPPBody", parent=styles["Normal"], fontSize=10, textColor=HexColor("#374151"), spaceAfter=4)
-    small_style = ParagraphStyle("DPPSmall", parent=styles["Normal"], fontSize=8, textColor=HexColor("#9CA3AF"))
+    title_style = ParagraphStyle("DPPTitle2", parent=styles["Heading1"], fontSize=18, textColor=HexColor("#1F2937"), spaceAfter=6)
+    subtitle_style = ParagraphStyle("DPPSub2", parent=styles["Normal"], fontSize=10, textColor=HexColor("#6B7280"), spaceAfter=12)
+    section_style = ParagraphStyle("DPPSection2", parent=styles["Heading2"], fontSize=13, textColor=HexColor("#1F2937"), spaceBefore=14, spaceAfter=6)
+    body_style = ParagraphStyle("DPPBody2", parent=styles["Normal"], fontSize=10, leading=13, textColor=HexColor("#374151"), spaceAfter=4)
+    table_style = ParagraphStyle("DPPTable2", parent=styles["Normal"], fontSize=8.5, leading=10.5, textColor=HexColor("#374151"))
+    small_style = ParagraphStyle("DPPSmall2", parent=styles["Normal"], fontSize=8, textColor=HexColor("#9CA3AF"))
+
+    def text_value(value) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, bool):
+            return "Yes" if value else "No"
+        if isinstance(value, (int, float)):
+            return f"{value:g}"
+        return str(value)
+
+    def labelize(value: str) -> str:
+        return text_value(value).replace("_", " ").strip().title()
+
+    def cell(value):
+        return Paragraph(escape(text_value(value)).replace("\n", "<br/>") or "N/A", table_style)
+
+    def format_date(value) -> str:
+        if not value:
+            return "N/A"
+        if isinstance(value, datetime):
+            return value.strftime("%Y-%m-%d")
+        return str(value)[:10]
+
+    def first_present(*values):
+        for value in values:
+            if value not in (None, ""):
+                return value
+        return ""
 
     elements = []
+
+    def add_property_table(title: str, properties: dict):
+        if not properties:
+            return
+        elements.append(Paragraph(title, section_style))
+        rows = [[cell("Property"), cell("Value"), cell("Unit"), cell("Test Method")]]
+        for name, prop in properties.items():
+            if isinstance(prop, dict):
+                rows.append([
+                    cell(labelize(name)),
+                    cell(prop.get("value", "")),
+                    cell(prop.get("unit", "")),
+                    cell(first_present(prop.get("test_method"), prop.get("method"), prop.get("standard"))),
+                ])
+            else:
+                rows.append([cell(labelize(name)), cell(prop), cell(""), cell("")])
+        table = Table(rows, colWidths=[doc_width * 0.32, doc_width * 0.22, doc_width * 0.16, doc_width * 0.30], repeatRows=1, splitByRow=1)
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), HexColor("#F3F4F6")),
+            ("GRID", (0, 0), (-1, -1), 0.5, HexColor("#E5E7EB")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        elements.append(table)
+
+    def add_key_value_section(title: str, rows: list[tuple[str, str]]):
+        visible_rows = [(label, value) for label, value in rows if text_value(value)]
+        if not visible_rows:
+            return
+        elements.append(Paragraph(title, section_style))
+        table = Table([[cell(label), cell(value)] for label, value in visible_rows], colWidths=[doc_width * 0.30, doc_width * 0.70], splitByRow=1)
+        table.setStyle(TableStyle([
+            ("GRID", (0, 0), (-1, -1), 0.5, HexColor("#E5E7EB")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        elements.append(table)
+
     elements.append(Paragraph("DIGITAL PRODUCT PASSPORT", small_style))
-    elements.append(Paragraph(dpp.get("product_name", "Untitled Product"), title_style))
-    elements.append(Paragraph(f'{dpp.get("manufacturer", "")} — {record.passport_id}', subtitle_style))
+    elements.append(Paragraph(escape(text_value(dpp.get("product_name", "Untitled Product"))), title_style))
+    elements.append(Paragraph(escape(f'{dpp.get("manufacturer", "")} - {record.passport_id}'), subtitle_style))
+
+    batch_info = dpp.get("batch_info", {})
+    confidence = record.confidence_score
+    if confidence in (None, 0):
+        confidence = dpp.get("confidence", {}).get("overall", 0)
 
     info_data = [
-        ["Category", dpp.get("category", "N/A"), "Document Type", dpp.get("document_type", "N/A")],
-        ["Batch", dpp.get("batch_info", {}).get("batch_number", "N/A"), "Origin", dpp.get("batch_info", {}).get("origin_country", "N/A")],
-        ["Method", record.conversion_method or "N/A", "Confidence", f"{record.confidence_score or 0:.0f}%"],
-        ["Created", str(record.created_at)[:10] if record.created_at else "N/A", "Status", record.status or "active"],
+        [cell("Category"), cell(dpp.get("category", "N/A")), cell("Document Type"), cell(dpp.get("document_type", "N/A"))],
+        [cell("Batch"), cell(batch_info.get("batch_number", "N/A")), cell("Origin"), cell(batch_info.get("origin_country", "N/A"))],
+        [cell("Method"), cell(record.conversion_method or "N/A"), cell("Confidence"), cell(f"{confidence or 0:.0f}%")],
+        [cell("Created"), cell(format_date(record.created_at)), cell("Status"), cell(record.status or "active")],
     ]
-    info_table = Table(info_data, colWidths=[80, 140, 80, 140])
+    info_table = Table(info_data, colWidths=[doc_width * 0.18, doc_width * 0.32, doc_width * 0.18, doc_width * 0.32])
     info_table.setStyle(TableStyle([
-        ("TEXTCOLOR", (0, 0), (0, -1), HexColor("#6B7280")),
-        ("TEXTCOLOR", (2, 0), (2, -1), HexColor("#6B7280")),
-        ("TEXTCOLOR", (1, 0), (1, -1), HexColor("#1F2937")),
-        ("TEXTCOLOR", (3, 0), (3, -1), HexColor("#1F2937")),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("GRID", (0, 0), (-1, -1), 0.5, HexColor("#E5E7EB")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ("TOPPADDING", (0, 0), (-1, -1), 4),
     ]))
     elements.append(info_table)
 
-    tech_props = dpp.get("technical_properties", {})
-    if tech_props:
-        elements.append(Paragraph("Technical Properties", section_style))
-        tp_data = [["Property", "Value", "Unit", "Test Method"]]
-        for name, prop in tech_props.items():
-            if isinstance(prop, dict):
-                tp_data.append([name, str(prop.get("value", "")), prop.get("unit", ""), prop.get("test_method", "")])
-            else:
-                tp_data.append([name, str(prop), "", ""])
-        tp_table = Table(tp_data, colWidths=[140, 100, 60, 140])
-        tp_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), HexColor("#F3F4F6")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), HexColor("#374151")),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ("GRID", (0, 0), (-1, -1), 0.5, HexColor("#E5E7EB")),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ]))
-        elements.append(tp_table)
+    add_property_table("Technical Properties", dpp.get("technical_properties", {}))
+    add_property_table("Working Properties", dpp.get("working_properties", {}))
 
     standards = dpp.get("standards_compliance", [])
     if standards:
         elements.append(Paragraph("Standards Compliance", section_style))
         for std in standards:
-            elements.append(Paragraph(f"• {std}", body_style))
+            elements.append(Paragraph(f"- {escape(text_value(std))}", body_style))
 
     desc = dpp.get("description", "")
     if desc:
         elements.append(Paragraph("Description", section_style))
-        elements.append(Paragraph(desc, body_style))
+        elements.append(Paragraph(escape(text_value(desc)), body_style))
+
+    applications = dpp.get("applications") or []
+    if isinstance(applications, dict):
+        applications = [value for value in applications.values() if value]
+    if applications:
+        elements.append(Paragraph("Applications", section_style))
+        for application in applications:
+            elements.append(Paragraph(f"- {escape(text_value(application))}", body_style))
+
+    packaging = dpp.get("packaging", {})
+    storage = dpp.get("storage", {})
+    package_label = " ".join(part for part in [text_value(packaging.get("size")), text_value(packaging.get("type"))] if part).strip()
+    shelf_life = storage.get("shelf_life", {})
+    if isinstance(shelf_life, dict):
+        shelf_life_text = " ".join(part for part in [text_value(shelf_life.get("value")), text_value(shelf_life.get("unit"))] if part).strip()
+    else:
+        shelf_life_text = text_value(shelf_life)
+    add_key_value_section("Packaging and Storage", [
+        ("Packaging", package_label),
+        ("Storage Conditions", storage.get("conditions", "")),
+        ("Shelf Life", shelf_life_text),
+    ])
 
     sustainability = dpp.get("sustainability", {})
     if sustainability:
-        elements.append(Paragraph("Sustainability", section_style))
         carbon = sustainability.get("carbon_footprint", {})
-        elements.append(Paragraph(f'Recycled Content: {sustainability.get("recycled_content_pct", 0)}%', body_style))
-        if carbon:
-            elements.append(Paragraph(f'Carbon Footprint: {carbon.get("value", 0)} {carbon.get("unit", "")}', body_style))
+        add_key_value_section("Sustainability", [
+            ("Recycled Content", f'{sustainability.get("recycled_content_pct", 0)}%'),
+            ("Carbon Footprint", f'{carbon.get("value", 0)} {carbon.get("unit", "")}' if carbon else ""),
+            ("Recyclable", sustainability.get("recyclable", "")),
+        ])
+
+    source_document = dpp.get("source_document", {})
+    add_key_value_section("Source Document", [
+        ("Title", source_document.get("title", "")),
+        ("Type", source_document.get("document_type", "")),
+        ("Revision", source_document.get("revision", "")),
+        ("Date Issued", source_document.get("date_issued", "")),
+    ])
+
+    qr_verification = dpp.get("qr_verification", {})
+    add_key_value_section("Verification", [
+        ("Verification URL", qr_verification.get("verification_url", "")),
+        ("ConstructAsk URL", qr_verification.get("constructask_url", "")),
+    ])
 
     elements.append(Spacer(1, 20))
-    elements.append(Paragraph(f"Generated by DPP Forge — {date.today()}", small_style))
+    elements.append(Paragraph(f"Generated by DPP Forge - {date.today()}", small_style))
 
     doc.build(elements)
     return buf.getvalue()
