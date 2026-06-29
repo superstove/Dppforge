@@ -10,20 +10,24 @@ Cloud (Render):
 
 from __future__ import annotations
 
+import html
+import json
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from database import engine, Base, DATABASE_URL
+from database import engine, Base, DATABASE_URL, get_db
+from models import DPPRecord
 from routes import analytics, compliance, converter, manufacturers, notifications, passports
+from sqlalchemy.orm import Session
 
 
 class APIKeyMiddleware(BaseHTTPMiddleware):
@@ -144,6 +148,83 @@ async def global_exception_handler(request: Request, exc: Exception):
 def health():
     db_url = os.getenv("DATABASE_URL", "sqlite")
     return {"status": "ok", "cloud": "postgresql" in db_url}
+
+
+def _find_passport(db: Session, passport_ref: str) -> DPPRecord | None:
+    record = None
+    if passport_ref.isdigit():
+        record = db.query(DPPRecord).filter(DPPRecord.id == int(passport_ref)).first()
+    if not record:
+        record = db.query(DPPRecord).filter(DPPRecord.passport_id == passport_ref).first()
+    return record
+
+
+def _render_scan_page(record: DPPRecord) -> str:
+    try:
+        dpp = json.loads(record.dpp_json or "{}")
+    except Exception:
+        dpp = {}
+
+    product_name = html.escape(record.product_name or dpp.get("product_name") or "Digital Product Passport")
+    manufacturer = html.escape(record.manufacturer or dpp.get("manufacturer") or "Unknown manufacturer")
+    passport_id = html.escape(record.passport_id or dpp.get("passport_id") or "")
+    category = html.escape(record.category or dpp.get("category") or "N/A")
+    batch = html.escape(record.batch_number or dpp.get("batch_info", {}).get("batch_number") or "N/A")
+    json_text = html.escape(json.dumps(dpp, indent=2, ensure_ascii=False))
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{product_name} - DPP</title>
+  <style>
+    :root {{ color-scheme: dark; font-family: Arial, sans-serif; }}
+    body {{ margin: 0; background: #0a0b10; color: #e4e6ed; }}
+    main {{ max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }}
+    .badge {{ display: inline-block; padding: 6px 10px; border: 1px solid #22c55e55; border-radius: 999px; color: #86efac; background: #22c55e18; font-size: 13px; font-weight: 700; }}
+    h1 {{ margin: 16px 0 8px; font-size: clamp(28px, 8vw, 48px); line-height: 1.05; color: white; }}
+    .muted {{ color: #a0a8bf; }}
+    .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 22px 0; }}
+    .card {{ background: #1a1d27; border: 1px solid #2e3245; border-radius: 14px; padding: 16px; }}
+    .label {{ color: #8b8fa3; font-size: 12px; text-transform: uppercase; font-weight: 700; margin-bottom: 6px; }}
+    pre {{ white-space: pre-wrap; word-break: break-word; background: #05060a; border: 1px solid #2e3245; border-radius: 14px; padding: 16px; overflow: auto; font-size: 12px; line-height: 1.45; }}
+    a {{ color: white; }}
+  </style>
+</head>
+<body>
+  <main>
+    <span class="badge">Verified DPP Record</span>
+    <h1>{product_name}</h1>
+    <p class="muted">{manufacturer}</p>
+    <section class="grid">
+      <div class="card"><div class="label">Passport ID</div><div>{passport_id}</div></div>
+      <div class="card"><div class="label">Category</div><div>{category}</div></div>
+      <div class="card"><div class="label">Batch</div><div>{batch}</div></div>
+    </section>
+    <h2>Digital Product Passport JSON</h2>
+    <pre>{json_text}</pre>
+  </main>
+</body>
+</html>"""
+
+
+@app.get("/", response_class=HTMLResponse)
+def scan_root(passport: str | None = None, db: Session = Depends(get_db)):
+    if not passport:
+        raise HTTPException(status_code=404, detail="Not Found")
+    record = _find_passport(db, passport)
+    if not record:
+        raise HTTPException(status_code=404, detail="Passport not found")
+    return HTMLResponse(_render_scan_page(record))
+
+
+@app.get("/passport/{passport_ref}", response_class=HTMLResponse)
+def scan_passport(passport_ref: str, db: Session = Depends(get_db)):
+    record = _find_passport(db, passport_ref)
+    if not record:
+        raise HTTPException(status_code=404, detail="Passport not found")
+    return HTMLResponse(_render_scan_page(record))
 
 
 # Serve built frontend in production with SPA fallback

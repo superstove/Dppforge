@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React from 'react';
 import { useLocation } from 'react-router-dom';
 import { Home, Plus, Database, Settings, LayoutDashboard, BarChart3, Factory, Globe, BookOpen, Shield, Bell, Columns3, HardHat, Menu } from 'lucide-react';
 
@@ -26,10 +26,6 @@ export function TopNav({
   sidebarCollapsed?: boolean;
 }) {
   const location = useLocation();
-  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
-  const [spotlightStyle, setSpotlightStyle] = useState<React.CSSProperties>({});
-  const navRef = useRef<HTMLDivElement>(null);
-  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const activeIdx = NAV_ITEMS.findIndex(item => {
     if (item.path === '/') return location.pathname === '/';
@@ -38,30 +34,8 @@ export function TopNav({
 
   const activeItem = activeIdx >= 0 ? NAV_ITEMS[activeIdx] : null;
 
-  useEffect(() => {
-    if (!sidebarCollapsed) return;
-    const update = () => {
-      const idx = hoveredIdx ?? activeIdx;
-      const el = itemRefs.current[idx];
-      const container = navRef.current;
-      if (el && container) {
-        const containerRect = container.getBoundingClientRect();
-        const elRect = el.getBoundingClientRect();
-        setSpotlightStyle({
-          left: elRect.left - containerRect.left,
-          width: elRect.width,
-          opacity: 1,
-          transition: hoveredIdx !== null ? 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)' : 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        });
-      } else {
-        setSpotlightStyle({ opacity: 0 });
-      }
-    };
-    requestAnimationFrame(update);
-  }, [hoveredIdx, activeIdx, location.pathname, sidebarCollapsed]);
-
   return (
-    <header className="h-14 border-b border-[#2e3245] flex items-center bg-[#0f1117]/90 backdrop-blur-xl z-20 sticky top-0">
+    <header className="min-h-14 border-b border-[#2e3245] flex items-center bg-[#0f1117]/90 backdrop-blur-xl z-20 sticky top-0">
       {/* Mobile: hamburger + logo */}
       <div className="flex md:hidden items-center px-4 gap-3 w-full">
         <button
@@ -80,7 +54,7 @@ export function TopNav({
       </div>
 
       {/* Desktop */}
-      <div className="hidden md:flex items-center w-full px-4">
+      <div className="hidden md:flex items-center w-full px-4 py-2">
         {/* When sidebar is visible: show page title breadcrumb */}
         {!sidebarCollapsed && (
           <div className="flex items-center gap-3 w-full">
@@ -115,33 +89,27 @@ export function TopNav({
             <div className="w-px h-6 bg-[#2e3245] mr-2 flex-shrink-0"></div>
 
             <nav
-              ref={navRef}
-              className="relative flex items-center gap-1 flex-1 overflow-x-auto scrollbar-none px-2"
-              onMouseLeave={() => setHoveredIdx(null)}
+              className="relative flex flex-wrap items-center gap-1.5 flex-1 min-w-0 px-2"
+              aria-label="Primary navigation"
             >
-              <div
-                className="absolute top-1/2 -translate-y-1/2 h-9 rounded-lg bg-white/[0.08] pointer-events-none"
-                style={spotlightStyle}
-              />
-
               {NAV_ITEMS.map((item, idx) => {
                 const isActive = activeIdx === idx;
                 return (
                   <button
                     key={item.id}
-                    ref={el => { itemRefs.current[idx] = el; }}
                     onClick={() => setView(item.id)}
-                    onMouseEnter={() => setHoveredIdx(idx)}
-                    className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors flex-shrink-0 z-10
+                    className={`relative flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium transition-colors lg:px-3
                       ${isActive
-                        ? 'text-white'
-                        : 'text-[#8b8fa3] hover:text-white'
+                        ? 'bg-white/[0.10] text-white'
+                        : 'text-[#8b8fa3] hover:bg-white/[0.06] hover:text-white'
                       }`}
+                    title={item.label}
+                    aria-label={item.label}
                   >
                     <item.icon className="w-3.5 h-3.5" />
-                    <span>{item.label}</span>
+                    <span className="hidden xl:inline">{item.label}</span>
                     {isActive && (
-                      <span className="absolute -bottom-[11px] left-1/2 -translate-x-1/2 w-4/5 h-[2px] bg-white rounded-full" />
+                      <span className="absolute -bottom-[9px] left-1/2 h-[2px] w-4/5 -translate-x-1/2 rounded-full bg-white" />
                     )}
                   </button>
                 );

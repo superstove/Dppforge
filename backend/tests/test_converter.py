@@ -207,6 +207,27 @@ def test_public_app_base_url_uses_render_external_url(monkeypatch):
     assert public_app_base_url() == "https://dppforge.onrender.com"
 
 
+def test_scanned_qr_root_url_displays_saved_dpp_json():
+    manual = client.post("/api/convert/manual", json={
+        "product_name": "Scannable QR Product",
+        "manufacturer": "Scan Corp",
+        "category": "Concrete",
+        "standards_compliance": ["EN 206"],
+        "technical_properties": {"compressive_strength": {"value": 40, "unit": "MPa"}},
+    })
+    dpp = manual.json()["extracted_dpp"]
+    save = client.post("/api/convert/save", json={"dpp_json": dpp})
+    assert save.status_code == 200
+
+    res = client.get(f"/?passport={save.json()['id']}")
+
+    assert res.status_code == 200
+    assert "text/html" in res.headers["content-type"]
+    assert "Scannable QR Product" in res.text
+    assert "&quot;technical_properties&quot;" in res.text
+    assert "&quot;compressive_strength&quot;" in res.text
+
+
 def test_manufacturer_claim_workflow_and_outreach_templates():
     created = client.post("/api/manufacturers/", json={
         "name": "Claimable Manufacturer",
