@@ -2,6 +2,12 @@
 
 Construction-native Digital Product Passport tooling for turning manufacturer documents into QR-ready product records.
 
+## Screenshots
+
+![DPP Forge Dashboard](assets/screenshot-dashboard.png)
+![DPP Forge Upload & Extract](assets/screenshot-upload.png)
+![Digital Product Passport JSON](assets/screenshot-passport.png)
+
 ## What It Does
 
 - Converts TDS, EPD, DoP/CE, and test report PDFs into structured DPP JSON.
