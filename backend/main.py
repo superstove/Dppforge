@@ -22,7 +22,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from database import engine, Base
+from database import engine, Base, DATABASE_URL
 from routes import analytics, compliance, converter, manufacturers, notifications, passports
 
 
@@ -55,6 +55,30 @@ try:
     Base.metadata.create_all(bind=engine)
 except Exception as e:
     print(f"[STARTUP] DB table creation failed: {e}")
+
+# Add missing columns to existing tables (SQLAlchemy create_all won't do this)
+if not DATABASE_URL.startswith("sqlite"):
+    from sqlalchemy import text, inspect as sa_inspect
+    try:
+        with engine.connect() as conn:
+            inspector = sa_inspect(engine)
+            existing = {c["name"] for c in inspector.get_columns("dpp_records")}
+            migrations = [
+                ("manufacturer_id", "ALTER TABLE dpp_records ADD COLUMN manufacturer_id INTEGER REFERENCES manufacturers(id)"),
+                ("carbon_footprint", "ALTER TABLE dpp_records ADD COLUMN carbon_footprint FLOAT DEFAULT 0.0"),
+                ("standards_count", "ALTER TABLE dpp_records ADD COLUMN standards_count INTEGER DEFAULT 0"),
+                ("properties_count", "ALTER TABLE dpp_records ADD COLUMN properties_count INTEGER DEFAULT 0"),
+                ("confidence_score", "ALTER TABLE dpp_records ADD COLUMN confidence_score FLOAT DEFAULT 0.0"),
+                ("confidence_details", "ALTER TABLE dpp_records ADD COLUMN confidence_details TEXT DEFAULT '{}'"),
+                ("document_type", "ALTER TABLE dpp_records ADD COLUMN document_type VARCHAR DEFAULT 'tds'"),
+            ]
+            for col_name, sql in migrations:
+                if col_name not in existing:
+                    conn.execute(text(sql))
+                    print(f"[MIGRATION] Added column: dpp_records.{col_name}")
+            conn.commit()
+    except Exception as e:
+        print(f"[MIGRATION] Column migration failed: {e}")
 
 if os.getenv("DEMO_SEED_ENABLED", "").lower() in {"1", "true", "yes"}:
     from database import SessionLocal
