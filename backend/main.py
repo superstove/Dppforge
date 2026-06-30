@@ -17,7 +17,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -165,7 +165,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health():
     db_url = os.getenv("DATABASE_URL", "sqlite")
     return {"status": "ok", "cloud": "postgresql" in db_url}
@@ -230,10 +230,10 @@ def _render_scan_page(record: DPPRecord) -> str:
 </html>"""
 
 
-@app.get("/", response_class=HTMLResponse)
-def scan_root(passport: str | None = None, db: Session = Depends(get_db)):
-    if not passport:
-        raise HTTPException(status_code=404, detail="Not Found")
+@app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)
+def scan_root(request: Request, passport: str | None = None, db: Session = Depends(get_db)):
+    if request.method == "HEAD" or not passport:
+        return Response(status_code=200)
     record = _find_passport(db, passport)
     if not record:
         raise HTTPException(status_code=404, detail="Passport not found")
