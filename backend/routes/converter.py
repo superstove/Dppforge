@@ -1221,12 +1221,14 @@ async def batch_upload(
                 results.append({"file": file.filename, "status": "error", "detail": "Not enough text extracted"})
                 continue
 
-            extracted = ai_extract_fields(raw_text, doc_type)
+            classification = classify_document(raw_text, doc_type)
+            detected_doc_type = classification["document_type"]
+            extracted = ai_extract_fields(raw_text, detected_doc_type)
             method = extracted.pop("_extraction_method", "ai")
             error = extracted.pop("_extraction_error", None)
             extracted["_extraction_method"] = method
 
-            dpp = build_dpp(extracted, extracted.get("batch_number", ""), extracted.get("origin_country", ""), doc_type)
+            dpp = build_dpp(extracted, extracted.get("batch_number", ""), extracted.get("origin_country", ""), detected_doc_type)
             warnings = validate_dpp(dpp)
             if error:
                 warnings.append(error)
@@ -1235,7 +1237,9 @@ async def batch_upload(
                 "file": file.filename,
                 "status": "review_required",
                 "conversion_method": method,
-                "document_type": doc_type,
+                "document_type": detected_doc_type,
+                "detected_document_type": detected_doc_type,
+                "document_classification": classification,
                 "warnings": warnings,
                 "extracted_dpp": dpp,
                 "source_file_name": file.filename,

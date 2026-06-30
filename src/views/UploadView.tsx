@@ -10,19 +10,19 @@ interface UploadViewProps {
 }
 
 const DOC_TYPES = [
-  { value: 'auto', label: 'Auto Detect' },
-  { value: 'tds', label: 'Technical Data Sheet (TDS)' },
-  { value: 'epd', label: 'Environmental Product Declaration (EPD)' },
-  { value: 'dop', label: 'Declaration of Performance (DoP)' },
-  { value: 'test_report', label: 'Test Report / Lab Certificate' },
-  { value: 'sds', label: 'Safety Data Sheet (SDS)' },
-  { value: 'fpc', label: 'Factory Production Control' },
-  { value: 'certificate', label: 'Certificate' },
-  { value: 'installation', label: 'Installation' },
-  { value: 'maintenance', label: 'Maintenance' },
-  { value: 'warranty', label: 'Warranty' },
-  { value: 'end_of_life', label: 'End of Life' },
-  { value: 'catalogue', label: 'Catalogue' },
+  { value: 'auto', label: 'Auto Detect', focus: 'Reads the PDF first, then chooses TDS, EPD, DoP, SDS, certificate, or instruction mode automatically.' },
+  { value: 'tds', label: 'Technical Data Sheet (TDS)', focus: 'Prioritizes product identity, technical properties, standards, application, packaging, and storage.' },
+  { value: 'epd', label: 'Environmental Product Declaration (EPD)', focus: 'Prioritizes declared unit, LCA stages, GWP/carbon footprint, EPD references, and sustainability values.' },
+  { value: 'dop', label: 'Declaration of Performance (DoP)', focus: 'Prioritizes CE marking, AVCP system, notified body, essential characteristics, and declared performance.' },
+  { value: 'test_report', label: 'Test Report / Lab Certificate', focus: 'Prioritizes laboratory name, test methods, specimens, results, dates, and pass/fail conclusions.' },
+  { value: 'sds', label: 'Safety Data Sheet (SDS)', focus: 'Prioritizes hazards, safety handling, substances of concern, PPE, and regulatory safety notes.' },
+  { value: 'fpc', label: 'Factory Production Control', focus: 'Prioritizes factory control evidence, production checks, certification scope, and surveillance details.' },
+  { value: 'certificate', label: 'Certificate', focus: 'Prioritizes certificate number, issuer, validity, standard, scope, and approval status.' },
+  { value: 'installation', label: 'Installation', focus: 'Prioritizes application method, substrate preparation, coverage, curing, and installation constraints.' },
+  { value: 'maintenance', label: 'Maintenance', focus: 'Prioritizes inspection interval, maintenance method, repair guidance, and service-life evidence.' },
+  { value: 'warranty', label: 'Warranty', focus: 'Prioritizes warranty period, conditions, exclusions, claim process, and responsible party.' },
+  { value: 'end_of_life', label: 'End of Life', focus: 'Prioritizes reuse, recycling, disposal, disassembly, and circularity instructions.' },
+  { value: 'catalogue', label: 'Catalogue', focus: 'Prioritizes product family, variants, multiple products, applications, and manufacturer catalogue data.' },
 ];
 
 type BatchResult = { file: string; status: string; detail?: string; extracted_dpp?: Record<string, unknown>; warnings?: string[] };
@@ -38,6 +38,7 @@ export function UploadView({ setView, onReview }: UploadViewProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isBatch = files.length > 1;
+  const selectedDocType = DOC_TYPES.find(dt => dt.value === docType) || DOC_TYPES[0];
 
   const addFiles = (newFiles: FileList | File[]) => {
     const pdfs = Array.from(newFiles).filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
@@ -116,20 +117,38 @@ export function UploadView({ setView, onReview }: UploadViewProps) {
       <p className="text-[#8b8fa3] mb-4 text-base sm:text-lg leading-relaxed">Upload a TDS, EPD, DoP, or Test Report — our AI extracts properties into a structured DPP. Supports single or batch upload.</p>
 
       {/* Document type selector */}
-      <div className="flex flex-wrap gap-2 mb-8">
-        {DOC_TYPES.map(dt => (
-          <button
-            key={dt.value}
-            onClick={() => setDocType(dt.value)}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-              docType === dt.value
-                ? 'bg-white text-black'
-                : 'bg-[#1a1d27] text-[#8b8fa3] border border-[#2e3245] hover:text-white hover:border-[#4e5269]'
-            }`}
-          >
-            {dt.label}
-          </button>
-        ))}
+      <div className="mb-8">
+        <div className="flex flex-wrap gap-2">
+          {DOC_TYPES.map(dt => (
+            <button
+              key={dt.value}
+              onClick={() => {
+                setDocType(dt.value);
+                setBatchResults(null);
+                setDraftResult(null);
+              }}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                docType === dt.value
+                  ? 'bg-white text-black'
+                  : 'bg-[#1a1d27] text-[#8b8fa3] border border-[#2e3245] hover:text-white hover:border-[#4e5269]'
+              }`}
+            >
+              {dt.label}
+            </button>
+          ))}
+        </div>
+        <div className="mt-4 rounded-2xl border border-[#2e3245] bg-[#1a1d27]/70 p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-[#63677a]">Selected extraction mode</p>
+              <p className="mt-1 text-sm font-bold text-white">{selectedDocType.label}</p>
+              <p className="mt-1 text-sm leading-relaxed text-[#8b8fa3]">{selectedDocType.focus}</p>
+            </div>
+            <span className="shrink-0 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-300">
+              Sent as doc_type={docType}
+            </span>
+          </div>
+        </div>
       </div>
       {error && (
         <div className="mb-8 rounded-2xl border border-[#ef4444]/30 bg-[#ef4444]/10 p-5 text-[#fecaca] font-medium">
@@ -148,7 +167,7 @@ export function UploadView({ setView, onReview }: UploadViewProps) {
              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center z-10">
                <Loader2 className="w-12 h-12 sm:w-16 sm:h-16 text-white animate-spin mb-6" />
                <p className="text-xl sm:text-2xl text-white font-bold tracking-tight">
-                 {isBatch ? `Processing ${files.length} files...` : 'Extracting Data...'}
+                 {isBatch ? `Processing ${files.length} files as ${selectedDocType.label}...` : `Extracting ${selectedDocType.label}...`}
                </p>
                <p className="text-[#8b8fa3] mt-2 font-medium">This may take a few seconds per file.</p>
              </div>
@@ -245,7 +264,7 @@ export function UploadView({ setView, onReview }: UploadViewProps) {
             disabled={files.length === 0 || loading}
             className="w-full sm:w-auto bg-white text-black px-10 py-4 rounded-full font-bold text-base sm:text-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-xl"
           >
-            {files.length > 1 ? `Extract ${files.length} Files` : 'Extract Data'}
+            {files.length > 1 ? `Extract ${files.length} Files as ${selectedDocType.label}` : `Extract ${selectedDocType.label}`}
           </button>
         ) : (
           <div className="flex items-center gap-2 text-[#63677a] text-sm">
