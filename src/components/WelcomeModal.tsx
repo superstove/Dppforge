@@ -15,9 +15,21 @@ const SIDEBAR_ITEMS = [
   { icon: Settings, label: 'Settings', desc: 'API keys, model config, and preferences' },
 ];
 
-export function WelcomeModal() {
+interface WelcomeModalProps {
+  forceOpen?: boolean;
+  onClose?: () => void;
+}
+
+export function WelcomeModal({ forceOpen, onClose }: WelcomeModalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [step, setStep] = useState<'welcome' | 'sidebar'>('welcome');
+
+  useEffect(() => {
+    if (forceOpen) {
+      setStep('welcome');
+      setIsOpen(true);
+    }
+  }, [forceOpen]);
 
   useEffect(() => {
     const hasSeenWelcome = localStorage.getItem('dpp_forge_welcome_seen');
@@ -29,6 +41,8 @@ export function WelcomeModal() {
   const handleClose = () => {
     localStorage.setItem('dpp_forge_welcome_seen', 'true');
     setIsOpen(false);
+    setStep('welcome');
+    onClose?.();
   };
 
   if (!isOpen) return null;

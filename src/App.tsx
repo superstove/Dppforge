@@ -53,6 +53,7 @@ function AppShell() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [conversionResult, setConversionResult] = useState<ConversionResult | null>(null);
   const [savedResult, setSavedResult] = useState<SaveResult | null>(null);
+  const [tourOpen, setTourOpen] = useState(false);
 
   const setView = (view: ViewName | string) => {
     const path = VIEW_TO_PATH[view as ViewName] || '/';
@@ -71,7 +72,7 @@ function AppShell() {
 
   return (
     <div className="flex h-[100svh] bg-black text-[#e4e6ed] font-sans overflow-hidden selection:bg-white/30">
-      <WelcomeModal />
+      <WelcomeModal forceOpen={tourOpen} onClose={() => setTourOpen(false)} />
       <Sidebar
         currentView={location.pathname}
         setView={setView}
@@ -79,6 +80,7 @@ function AppShell() {
         isCollapsed={sidebarCollapsed}
         onClose={() => setSidebarOpen(false)}
         onCollapse={() => setSidebarCollapsed(true)}
+        onReplayTour={() => setTourOpen(true)}
       />
 
       <div className="min-w-0 flex-1 flex flex-col relative overflow-hidden bg-[#0a0b10]">

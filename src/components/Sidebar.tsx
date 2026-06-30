@@ -1,4 +1,4 @@
-import { Home, Plus, Database, Settings, LayoutDashboard, HardHat, X, BarChart3, Factory, Globe, BookOpen, Shield, Bell } from 'lucide-react';
+import { Home, Plus, Database, Settings, LayoutDashboard, HardHat, X, BarChart3, Factory, Globe, BookOpen, Shield, Bell, HelpCircle } from 'lucide-react';
 
 export function Sidebar({
   currentView,
@@ -7,6 +7,7 @@ export function Sidebar({
   isCollapsed = false,
   onClose,
   onCollapse,
+  onReplayTour,
 }: {
   currentView: string;
   setView: (v: string) => void;
@@ -14,6 +15,7 @@ export function Sidebar({
   isCollapsed?: boolean;
   onClose?: () => void;
   onCollapse?: () => void;
+  onReplayTour?: () => void;
 }) {
   const navItems = [
     { id: 'home', path: '/', label: 'Home', icon: Home },
@@ -89,8 +91,17 @@ export function Sidebar({
           </button>
         ))}
       </nav>
-      <div className="p-4 border-t border-[#2e3245] text-xs text-[#63677a]">
-        DPP Forge v1
+      <div className="p-4 border-t border-[#2e3245]">
+        {onReplayTour && (
+          <button
+            onClick={() => { onReplayTour(); onClose?.(); }}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-[#8b8fa3] hover:bg-[#1a1d27] hover:text-white transition-colors text-sm font-medium mb-2"
+          >
+            <HelpCircle className="w-4 h-4" />
+            <span>Replay Tour</span>
+          </button>
+        )}
+        <p className="text-xs text-[#63677a] px-3">DPP Forge v1</p>
       </div>
     </>
   );
