@@ -1,5 +1,5 @@
 import { useState, useEffect, ChangeEvent } from 'react';
-import { ArrowLeft, AlertTriangle, CheckCircle, Download, Check, FileJson, QrCode, Loader2 } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, CheckCircle, Download, Check, FileJson, QrCode, Loader2, Plus, Trash2 } from 'lucide-react';
 import { api } from '../api';
 import { Input } from '../components/Input';
 import type { ConversionResult, SaveResult, DppJson, TechnicalProperty } from '../types';
@@ -45,11 +45,86 @@ export function ReviewView({ setView, data, onSaved, sidebarCollapsed = false }:
     setDpp(updated as DppJson);
   };
 
+  const handleArrayTextChange = (path: 'standards_compliance' | 'primary_use' | 'suitable_for', value: string) => {
+    const values = value.split('\n').map((item) => item.trim()).filter(Boolean);
+    if (path === 'standards_compliance') {
+      setDpp({ ...dpp, standards_compliance: values });
+      return;
+    }
+    setDpp({ ...dpp, application: { ...dpp.application, [path]: values } });
+  };
+
+  const handlePropertyChange = (
+    section: 'technical_properties' | 'working_properties',
+    key: string,
+    field: keyof TechnicalProperty,
+    value: string,
+  ) => {
+    setDpp({
+      ...dpp,
+      [section]: {
+        ...(dpp[section] || {}),
+        [key]: { ...(dpp[section]?.[key] || { value: '', unit: '' }), [field]: value },
+      },
+    });
+  };
+
+  const addProperty = (section: 'technical_properties' | 'working_properties') => {
+    const base = section === 'technical_properties' ? 'new_property' : 'new_working_property';
+    let key = base;
+    let suffix = 1;
+    while (dpp[section]?.[key]) {
+      suffix += 1;
+      key = `${base}_${suffix}`;
+    }
+    setDpp({ ...dpp, [section]: { ...(dpp[section] || {}), [key]: { value: '', unit: '', test_method: '' } } });
+  };
+
+  const removeProperty = (section: 'technical_properties' | 'working_properties', key: string) => {
+    const next = { ...(dpp[section] || {}) };
+    delete next[key];
+    setDpp({ ...dpp, [section]: next });
+  };
+
+  const buildReviewedDpp = (): DppJson => ({
+    ...dpp,
+    confidence: {
+      overall: Math.max(dpp.confidence?.overall || 0, minimumConfidence),
+      product_name: Math.max(dpp.confidence?.product_name || 0, minimumConfidence),
+      manufacturer: Math.max(dpp.confidence?.manufacturer || 0, minimumConfidence),
+      technical_properties: Math.max(dpp.confidence?.technical_properties || 0, minimumConfidence),
+      standards_compliance: Math.max(dpp.confidence?.standards_compliance || 0, minimumConfidence),
+    },
+    evidence: {
+      minimum_confidence_required: minimumConfidence,
+      field_sources: (dpp.evidence?.field_sources || []).map((source) => ({
+        ...source,
+        confidence: Math.max(source.confidence || 0, minimumConfidence),
+      })),
+      quality_notes: 'Human reviewed and approved on the DPP approval page.',
+    },
+    audit_trail: [
+      ...(dpp.audit_trail || []),
+      {
+        event: 'human_review_approved',
+        actor: 'review_user',
+        method: 'approval_page_edit',
+        timestamp: new Date().toISOString(),
+      },
+    ],
+  });
+
   const handleApprove = async () => {
+    if (!dpp.product_name?.trim() || !dpp.manufacturer?.trim() || !dpp.category?.trim()) {
+      setError('Product name, manufacturer, and category are required before approval.');
+      return;
+    }
     setLoading(true);
     setError('');
     try {
-      const res = await api.saveDpp(dpp);
+      const finalDpp = buildReviewedDpp();
+      setDpp(finalDpp);
+      const res = await api.saveDpp(finalDpp);
       onSaved(res);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save DPP');
@@ -161,7 +236,7 @@ export function ReviewView({ setView, data, onSaved, sidebarCollapsed = false }:
           )}
           {blocksSave && (
             <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-              Saving is blocked until the reviewed record reaches at least {minimumConfidence}% confidence.
+              AI confidence is below {minimumConfidence}%. Correct the extracted fields, then approve to mark the record as human-reviewed.
             </div>
           )}
         </div>
@@ -173,6 +248,15 @@ export function ReviewView({ setView, data, onSaved, sidebarCollapsed = false }:
             <h3 className="text-xl font-bold text-white mb-6">Core Identity (Editable)</h3>
             <div className="space-y-4">
               <Input label="Passport ID" value={dpp.passport_id || ''} onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange('passport_id', e.target.value)} />
+              <label className="block">
+                <span className="block text-sm font-semibold text-[#8b8fa3] mb-2">Description</span>
+                <textarea
+                  value={dpp.description || ''}
+                  onChange={(e) => handleChange('description', e.target.value)}
+                  rows={3}
+                  className="w-full bg-[#242736] border border-[#2e3245] rounded-xl px-4 py-3 text-white outline-none focus:border-[#6366f1] resize-y"
+                />
+              </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input label="Product Name" value={dpp.product_name || ''} onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange('product_name', e.target.value)} />
                 <Input label="Manufacturer" value={dpp.manufacturer || ''} onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange('manufacturer', e.target.value)} />
@@ -183,13 +267,24 @@ export function ReviewView({ setView, data, onSaved, sidebarCollapsed = false }:
           </div>
 
           <div className="bg-[#1a1d27]/80 backdrop-blur-sm border border-[#2e3245] rounded-2xl p-5 sm:p-8 shadow-lg">
-            <h3 className="text-xl font-bold text-white mb-6">Technical Properties</h3>
+            <div className="flex items-center justify-between gap-3 mb-6">
+              <h3 className="text-xl font-bold text-white">Technical Properties</h3>
+              <button type="button" onClick={() => addProperty('technical_properties')} className="inline-flex items-center rounded-full bg-[#242736] border border-[#2e3245] px-4 py-2 text-sm font-bold text-white hover:bg-[#2e3245]">
+                <Plus className="w-4 h-4 mr-2" /> Add
+              </button>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               {Object.entries(dpp.technical_properties || {}).map(([key, prop]: [string, TechnicalProperty]) => (
-                <div key={key} className="bg-[#242736] p-4 rounded-xl border border-[#2e3245]">
-                  <p className="text-xs font-semibold text-[#8b8fa3] uppercase tracking-wider mb-2">{key.replace(/_/g, ' ')}</p>
-                  <p className="font-mono text-white text-xl">{prop.value} <span className="text-sm text-[#8b8fa3]">{prop.unit}</span></p>
-                  {prop.test_method && <p className="text-xs font-medium text-[#6366f1] mt-2">{prop.test_method}</p>}
+                <div key={key} className="bg-[#242736] p-4 rounded-xl border border-[#2e3245] space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-white break-all">{key.replace(/_/g, ' ')}</p>
+                    <button type="button" onClick={() => removeProperty('technical_properties', key)} className="p-2 rounded-lg text-red-300 hover:bg-red-500/10" aria-label={`Remove ${key}`}>
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <input value={prop.value ?? ''} onChange={(e) => handlePropertyChange('technical_properties', key, 'value', e.target.value)} placeholder="Value" className="w-full bg-[#0f1117] border border-[#2e3245] rounded-lg px-3 py-2 text-white outline-none focus:border-[#6366f1]" />
+                  <input value={prop.unit || ''} onChange={(e) => handlePropertyChange('technical_properties', key, 'unit', e.target.value)} placeholder="Unit" className="w-full bg-[#0f1117] border border-[#2e3245] rounded-lg px-3 py-2 text-white outline-none focus:border-[#6366f1]" />
+                  <input value={prop.test_method || ''} onChange={(e) => handlePropertyChange('technical_properties', key, 'test_method', e.target.value)} placeholder="Test method" className="w-full bg-[#0f1117] border border-[#2e3245] rounded-lg px-3 py-2 text-white outline-none focus:border-[#6366f1]" />
                 </div>
               ))}
               {Object.keys(dpp.technical_properties || {}).length === 0 && (
@@ -199,15 +294,46 @@ export function ReviewView({ setView, data, onSaved, sidebarCollapsed = false }:
           </div>
 
           <div className="bg-[#1a1d27]/80 backdrop-blur-sm border border-[#2e3245] rounded-2xl p-5 sm:p-8 shadow-lg">
-            <h3 className="text-xl font-bold text-white mb-6">Standards Compliance</h3>
-            <div className="flex flex-wrap gap-2">
-              {(dpp.standards_compliance || []).map((s: string, i: number) => (
-                <span key={i} className="bg-[#242736] text-white px-4 py-2 rounded-full text-sm font-medium border border-[#2e3245]">
-                  {s}
-                </span>
+            <h3 className="text-xl font-bold text-white mb-6">Standards & Applications</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <label className="block">
+                <span className="block text-sm font-semibold text-[#8b8fa3] mb-2">Standards</span>
+                <textarea value={(dpp.standards_compliance || []).join('\n')} onChange={(e) => handleArrayTextChange('standards_compliance', e.target.value)} rows={7} className="w-full bg-[#242736] border border-[#2e3245] rounded-xl px-4 py-3 text-white outline-none focus:border-[#6366f1] resize-y" />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-semibold text-[#8b8fa3] mb-2">Primary Uses</span>
+                <textarea value={(dpp.application?.primary_use || []).join('\n')} onChange={(e) => handleArrayTextChange('primary_use', e.target.value)} rows={7} className="w-full bg-[#242736] border border-[#2e3245] rounded-xl px-4 py-3 text-white outline-none focus:border-[#6366f1] resize-y" />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-semibold text-[#8b8fa3] mb-2">Suitable For</span>
+                <textarea value={(dpp.application?.suitable_for || []).join('\n')} onChange={(e) => handleArrayTextChange('suitable_for', e.target.value)} rows={7} className="w-full bg-[#242736] border border-[#2e3245] rounded-xl px-4 py-3 text-white outline-none focus:border-[#6366f1] resize-y" />
+              </label>
+            </div>
+          </div>
+
+          <div className="bg-[#1a1d27]/80 backdrop-blur-sm border border-[#2e3245] rounded-2xl p-5 sm:p-8 shadow-lg">
+            <div className="flex items-center justify-between gap-3 mb-6">
+              <h3 className="text-xl font-bold text-white">Working Properties</h3>
+              <button type="button" onClick={() => addProperty('working_properties')} className="inline-flex items-center rounded-full bg-[#242736] border border-[#2e3245] px-4 py-2 text-sm font-bold text-white hover:bg-[#2e3245]">
+                <Plus className="w-4 h-4 mr-2" /> Add
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+              {Object.entries(dpp.working_properties || {}).map(([key, prop]: [string, TechnicalProperty]) => (
+                <div key={key} className="bg-[#242736] p-4 rounded-xl border border-[#2e3245] space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-white break-all">{key.replace(/_/g, ' ')}</p>
+                    <button type="button" onClick={() => removeProperty('working_properties', key)} className="p-2 rounded-lg text-red-300 hover:bg-red-500/10" aria-label={`Remove ${key}`}>
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <input value={prop.value ?? ''} onChange={(e) => handlePropertyChange('working_properties', key, 'value', e.target.value)} placeholder="Value" className="w-full bg-[#0f1117] border border-[#2e3245] rounded-lg px-3 py-2 text-white outline-none focus:border-[#6366f1]" />
+                  <input value={prop.unit || ''} onChange={(e) => handlePropertyChange('working_properties', key, 'unit', e.target.value)} placeholder="Unit" className="w-full bg-[#0f1117] border border-[#2e3245] rounded-lg px-3 py-2 text-white outline-none focus:border-[#6366f1]" />
+                  <input value={prop.test_method || ''} onChange={(e) => handlePropertyChange('working_properties', key, 'test_method', e.target.value)} placeholder="Test method" className="w-full bg-[#0f1117] border border-[#2e3245] rounded-lg px-3 py-2 text-white outline-none focus:border-[#6366f1]" />
+                </div>
               ))}
-              {(!dpp.standards_compliance || dpp.standards_compliance.length === 0) && (
-                <p className="text-[#8b8fa3] text-sm italic">No standards listed.</p>
+              {Object.keys(dpp.working_properties || {}).length === 0 && (
+                <p className="text-[#8b8fa3] text-sm italic col-span-2">No working properties found.</p>
               )}
             </div>
           </div>
@@ -294,7 +420,7 @@ export function ReviewView({ setView, data, onSaved, sidebarCollapsed = false }:
       {/* Bottom Action Bar */}
       <div className={`fixed bottom-0 left-0 right-0 ${sidebarCollapsed ? '' : 'md:pl-64'} border-t border-[#2e3245] bg-[#0f1117]/90 backdrop-blur-xl p-3 sm:p-4 z-40`}>
         <div className="max-w-7xl mx-auto flex flex-col lg:flex-row lg:justify-between lg:items-center px-1 sm:px-4 gap-3">
-          <p className="text-[#8b8fa3] text-sm font-medium hidden lg:block">Verify all properties before generating the final passport.</p>
+          <p className="text-[#8b8fa3] text-sm font-medium hidden lg:block">Correct the AI extraction, then approve the reviewed passport.</p>
           <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 sm:gap-3 w-full lg:w-auto lg:ml-auto">
             <button
               onClick={downloadJson}
@@ -316,7 +442,7 @@ export function ReviewView({ setView, data, onSaved, sidebarCollapsed = false }:
             </button>
             <button
               onClick={handleApprove}
-              disabled={loading || blocksSave}
+              disabled={loading}
               className="col-span-2 sm:col-span-1 justify-center flex items-center bg-white text-black px-5 sm:px-8 py-3 rounded-full font-bold hover:bg-gray-200 transition-all disabled:opacity-50 shadow-[0_0_20px_rgba(255,255,255,0.2)] text-sm sm:text-base"
             >
               {loading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Check className="w-5 h-5 mr-2" />}

@@ -26,7 +26,7 @@ from main import app
 from fastapi.testclient import TestClient
 import fitz
 from routes.passports import _generate_dpp_pdf
-from routes.converter import _extract_with_regex, _friendly_error
+from routes.converter import _extract_with_regex, _friendly_error, _gemini_model_candidates
 from url_utils import public_app_base_url
 
 client = TestClient(app)
@@ -193,6 +193,30 @@ def test_gemini_friendly_error_includes_actionable_details():
 
     assert "model unavailable" in message
     assert "TDS_GEMINI_MODEL" in message
+
+
+def test_gemini_model_candidates_use_discovered_generate_content_models():
+    class FakeGenai:
+        @staticmethod
+        def list_models():
+            return [
+                SimpleNamespace(name="models/text-embedding-004", supported_generation_methods=["embedContent"]),
+                SimpleNamespace(name="models/gemini-1.5-flash", supported_generation_methods=["generateContent"]),
+                SimpleNamespace(name="models/gemini-2.0-flash", supported_generation_methods=["generateContent"]),
+            ]
+
+    candidates = _gemini_model_candidates(FakeGenai, "gemini-2.5-flash")
+
+    assert candidates[:3] == ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"]
+    assert "text-embedding-004" not in candidates
+
+
+def test_gemini_friendly_error_covers_permission_and_bad_key():
+    bad_key = _friendly_error(RuntimeError("API key not valid. Please pass a valid API key."), "Gemini")
+    forbidden = _friendly_error(RuntimeError("403 Permission denied"), "Gemini")
+
+    assert "API key invalid" in bad_key
+    assert "API key invalid" in forbidden
 
 
 def test_saved_passport_contains_data_rights_evidence_and_audit_trail():

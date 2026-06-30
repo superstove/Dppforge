@@ -303,16 +303,79 @@ def _extract_with_openai(text: str, api_key: str, doc_type: str = "tds") -> dict
         return {"_extraction_error": _friendly_error(e, "OpenAI"), **_extract_with_regex(text)}
 
 
+GEMINI_PREFERRED_MODELS = [
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-2.5-flash",
+]
+
+
+def _normalize_gemini_model_name(name: str) -> str:
+    return name.replace("models/", "", 1).strip()
+
+
+def _gemini_model_candidates(genai, configured_model: str | None = None) -> list[str]:
+    discovered: list[str] = []
+    try:
+        for model in genai.list_models():
+            methods = getattr(model, "supported_generation_methods", []) or []
+            name = _normalize_gemini_model_name(getattr(model, "name", ""))
+            if name.startswith("gemini") and "generateContent" in methods:
+                discovered.append(name)
+    except Exception as exc:
+        print(f"[GEMINI] Could not list models: {type(exc).__name__}: {exc}")
+
+    candidates: list[str] = []
+
+    def add(name: str | None) -> None:
+        normalized = _normalize_gemini_model_name(name or "")
+        if normalized and normalized not in candidates:
+            candidates.append(normalized)
+
+    add(configured_model)
+    for preferred in GEMINI_PREFERRED_MODELS:
+        if not discovered or preferred in discovered:
+            add(preferred)
+    for model_name in discovered:
+        if "flash" in model_name:
+            add(model_name)
+    for model_name in discovered:
+        add(model_name)
+
+    return candidates or GEMINI_PREFERRED_MODELS.copy()
+
+
+def _parse_ai_json(raw: str) -> dict:
+    cleaned = raw.strip()
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
+        if not match:
+            raise
+        return json.loads(match.group(0))
+
+
 def _extract_with_gemini(text: str, api_key: str, doc_type: str = "tds") -> dict:
-    model_name = os.getenv("TDS_GEMINI_MODEL", "gemini-2.5-flash")
-    models_to_try = [model_name, "gemini-2.0-flash", "gemini-1.5-flash"]
     last_error = None
+
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        model_name = os.getenv("TDS_GEMINI_MODEL", "").strip() or None
+        models_to_try = _gemini_model_candidates(genai, model_name)
+        print(f"[GEMINI] API key loaded: yes, candidate models: {', '.join(models_to_try[:5])}, text length: {len(text)}")
+    except Exception as e:
+        print(f"[GEMINI] Setup failed: {type(e).__name__}: {e}")
+        return {"_extraction_error": _friendly_error(e, "Gemini"), **_extract_with_regex(text)}
 
     for m in models_to_try:
         try:
-            import google.generativeai as genai
-            genai.configure(api_key=api_key)
-            print(f"[GEMINI] Trying model: {m}, key: {api_key[:8]}..., text length: {len(text)}")
+            print(f"[GEMINI] Trying model: {m}, text length: {len(text)}")
             model = genai.GenerativeModel(m)
             resp = model.generate_content(
                 _build_extraction_prompt(text, doc_type),
@@ -326,10 +389,8 @@ def _extract_with_gemini(text: str, api_key: str, doc_type: str = "tds") -> dict
                 print(f"[GEMINI] Model {m} returned empty response, trying next")
                 continue
             raw = resp.text.strip()
-            raw = re.sub(r"^```json\s*", "", raw)
-            raw = re.sub(r"\s*```$", "", raw)
             print(f"[GEMINI] Extraction succeeded with {m}, response length: {len(raw)}")
-            return json.loads(raw)
+            return _parse_ai_json(raw)
         except Exception as e:
             last_error = e
             print(f"[GEMINI] Model {m} failed: {type(e).__name__}: {e}")
@@ -341,7 +402,14 @@ def _extract_with_gemini(text: str, api_key: str, doc_type: str = "tds") -> dict
 
 def _friendly_error(error: Exception, provider: str) -> str:
     msg = str(error).lower()
-    if "invalid_api_key" in msg or "401" in msg:
+    if (
+        "invalid_api_key" in msg
+        or "api key not valid" in msg
+        or "permission denied" in msg
+        or "api_key_invalid" in msg
+        or "401" in msg
+        or "403" in msg
+    ):
         return f"{provider} API key invalid. Used regex fallback."
     if "quota" in msg or "429" in msg:
         return f"{provider} rate limit reached. Used regex fallback."
