@@ -17,6 +17,9 @@ export function ReviewView({ setView, data, onSaved, sidebarCollapsed = false }:
   const [showRaw, setShowRaw] = useState(false);
   const [qrPreviewUrl, setQrPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [reviewer, setReviewer] = useState('Product Passport Engineer');
+  const [reviewedConfidence, setReviewedConfidence] = useState(95);
+  const [rightsStatus, setRightsStatus] = useState('manufacturer_authorized');
 
   const warnings = data.warnings || [];
   const isValid = warnings.length === 0;
@@ -86,34 +89,6 @@ export function ReviewView({ setView, data, onSaved, sidebarCollapsed = false }:
     setDpp({ ...dpp, [section]: next });
   };
 
-  const buildReviewedDpp = (): DppJson => ({
-    ...dpp,
-    confidence: {
-      overall: Math.max(dpp.confidence?.overall || 0, minimumConfidence),
-      product_name: Math.max(dpp.confidence?.product_name || 0, minimumConfidence),
-      manufacturer: Math.max(dpp.confidence?.manufacturer || 0, minimumConfidence),
-      technical_properties: Math.max(dpp.confidence?.technical_properties || 0, minimumConfidence),
-      standards_compliance: Math.max(dpp.confidence?.standards_compliance || 0, minimumConfidence),
-    },
-    evidence: {
-      minimum_confidence_required: minimumConfidence,
-      field_sources: (dpp.evidence?.field_sources || []).map((source) => ({
-        ...source,
-        confidence: Math.max(source.confidence || 0, minimumConfidence),
-      })),
-      quality_notes: 'Human reviewed and approved on the DPP approval page.',
-    },
-    audit_trail: [
-      ...(dpp.audit_trail || []),
-      {
-        event: 'human_review_approved',
-        actor: 'review_user',
-        method: 'approval_page_edit',
-        timestamp: new Date().toISOString(),
-      },
-    ],
-  });
-
   const handleApprove = async () => {
     if (!dpp.product_name?.trim() || !dpp.manufacturer?.trim() || !dpp.category?.trim()) {
       setError('Product name, manufacturer, and category are required before approval.');
@@ -122,7 +97,8 @@ export function ReviewView({ setView, data, onSaved, sidebarCollapsed = false }:
     setLoading(true);
     setError('');
     try {
-      const finalDpp = buildReviewedDpp();
+      const approval = await api.approveDpp(dpp, reviewer, reviewedConfidence, rightsStatus);
+      const finalDpp = approval.dpp_json;
       setDpp(finalDpp);
       const res = await api.saveDpp(finalDpp);
       onSaved(res);
@@ -340,6 +316,26 @@ export function ReviewView({ setView, data, onSaved, sidebarCollapsed = false }:
 
           <div className="bg-[#1a1d27]/80 backdrop-blur-sm border border-[#2e3245] rounded-2xl p-5 sm:p-8 shadow-lg">
             <h3 className="text-xl font-bold text-white mb-4">Data Rights & Evidence</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+              <label className="block">
+                <span className="block text-sm font-semibold text-[#8b8fa3] mb-2">Reviewer</span>
+                <input value={reviewer} onChange={(e) => setReviewer(e.target.value)} className="w-full bg-[#242736] border border-[#2e3245] rounded-xl px-4 py-3 text-white outline-none focus:border-[#6366f1]" />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-semibold text-[#8b8fa3] mb-2">Reviewed Confidence</span>
+                <input type="number" min={0} max={100} value={reviewedConfidence} onChange={(e) => setReviewedConfidence(Number(e.target.value))} className="w-full bg-[#242736] border border-[#2e3245] rounded-xl px-4 py-3 text-white outline-none focus:border-[#6366f1]" />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-semibold text-[#8b8fa3] mb-2">Rights Status</span>
+                <select value={rightsStatus} onChange={(e) => setRightsStatus(e.target.value)} className="w-full bg-[#242736] border border-[#2e3245] rounded-xl px-4 py-3 text-white outline-none focus:border-[#6366f1]">
+                  <option value="manufacturer_authorized">Manufacturer Authorized</option>
+                  <option value="public_document">Public Document</option>
+                  <option value="licensed_reuse">Licensed Reuse</option>
+                  <option value="authority_approved">Authority Approved</option>
+                  <option value="internal_review">Internal Review</option>
+                </select>
+              </label>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
               <div className="bg-[#242736] border border-[#2e3245] rounded-xl p-4">
                 <p className="text-xs font-semibold text-[#8b8fa3] uppercase tracking-wider mb-1">Permission</p>
@@ -357,8 +353,8 @@ export function ReviewView({ setView, data, onSaved, sidebarCollapsed = false }:
                 {dpp.evidence.field_sources.slice(0, 5).map((source, index) => (
                   <div key={`${source.field}-${index}`} className="flex items-center justify-between gap-3 text-xs bg-[#0f1117] rounded-lg px-3 py-2">
                     <span className="text-white">{source.field}</span>
-                    <span className="text-[#8b8fa3] truncate">{source.source_title}</span>
-                    <span className={source.confidence >= minimumConfidence ? 'text-green-400' : 'text-yellow-400'}>{source.confidence}%</span>
+                    <span className="text-[#8b8fa3] truncate">{source.citation || source.source_title}</span>
+                    <span className={(source.ai_confidence ?? source.confidence) >= minimumConfidence ? 'text-green-400' : 'text-yellow-400'}>AI {source.ai_confidence ?? source.confidence}%</span>
                   </div>
                 ))}
               </div>

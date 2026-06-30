@@ -4,7 +4,9 @@ Analytics — dashboard stats, market coverage, quality metrics.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+import json
+
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 
@@ -16,28 +18,52 @@ router = APIRouter()
 
 TARGET_MARKET_CATALOG = [
     {
+        "sector": "road_construction",
         "category": "Road Construction",
+        "subcategory": "Road materials and geosynthetics",
+        "region": "EU/India",
         "key_products": ["Asphalt Mix", "Bitumen Binder", "Geogrid", "Geotextile", "Drainage Composite"],
         "required_standards": ["EN 13108", "EN 12591", "ASTM D6637", "EN 13249", "ISO 10319"],
         "required_documents": ["TDS", "EPD", "DoP/CE where applicable", "Test Report"],
+        "required_certifications": ["Factory Production Control where applicable"],
+        "priority": "high",
+        "expert_validation_status": "requires_expert_review",
     },
     {
+        "sector": "construction",
         "category": "Concrete and Cement",
+        "subcategory": "Concrete and repair materials",
+        "region": "EU/India",
         "key_products": ["Cement", "Ready Mix Concrete", "Concrete Admixture", "Repair Mortar", "Grout"],
         "required_standards": ["EN 197-1", "EN 206", "ASTM C494", "EN 1504", "EN 15804"],
         "required_documents": ["TDS", "EPD", "DoP/CE", "Batch Certificate"],
+        "required_certifications": ["Batch Certificate"],
+        "priority": "high",
+        "expert_validation_status": "requires_expert_review",
     },
     {
+        "sector": "road_construction",
         "category": "Geosynthetics",
+        "subcategory": "Reinforcement, filtration, and drainage",
+        "region": "EU/India",
         "key_products": ["Geotextile", "Geogrid", "Geomembrane", "Geocomposite Drain"],
         "required_standards": ["EN 13249", "EN 13251", "ASTM D4595", "ASTM D6637", "ISO 10318"],
         "required_documents": ["TDS", "DoP/CE", "Factory Production Control", "Test Report"],
+        "required_certifications": ["Factory Production Control"],
+        "priority": "high",
+        "expert_validation_status": "requires_expert_review",
     },
     {
+        "sector": "construction",
         "category": "Structural Metals",
+        "subcategory": "Steel and anchoring systems",
+        "region": "EU/India",
         "key_products": ["Rebar", "Structural Steel", "Anchor Bolt", "Rockfall Barrier"],
         "required_standards": ["EN 10080", "EN 1090", "ASTM A615", "ASTM F1554", "ISO 1461"],
         "required_documents": ["TDS", "Mill Certificate", "DoP/CE", "Test Report"],
+        "required_certifications": ["Mill Certificate"],
+        "priority": "medium",
+        "expert_validation_status": "requires_expert_review",
     },
 ]
 
@@ -181,40 +207,87 @@ def market_coverage(db: Session = Depends(get_db)):
 
 
 @router.get("/target-market-coverage")
-def target_market_coverage(db: Session = Depends(get_db)):
-    existing = {
-        (cat or "").lower(): {
-            "product_count": product_count,
-            "manufacturer_count": manufacturer_count,
-        }
-        for cat, product_count, manufacturer_count in (
-            db.query(
-                DPPRecord.category,
-                func.count(DPPRecord.id),
-                func.count(func.distinct(DPPRecord.manufacturer)),
-            )
-            .group_by(DPPRecord.category)
-            .all()
-        )
-    }
+def target_market_coverage(
+    sector: str | None = Query(None),
+    region: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    records = db.query(DPPRecord).all()
 
     targets = []
     for item in TARGET_MARKET_CATALOG:
-        matched_products = 0
-        matched_manufacturers = 0
-        for key, stats in existing.items():
-            if item["category"].lower() in key or any(p.lower() in key for p in item["key_products"]):
-                matched_products += stats["product_count"]
-                matched_manufacturers += stats["manufacturer_count"]
+        if sector and item["sector"] != sector:
+            continue
+        if region and region.lower() not in item["region"].lower():
+            continue
+
+        matched = []
+        covered_docs = set()
+        covered_standards = set()
+        confidence_values = []
+        manufacturers = set()
+        for record in records:
+            haystack = " ".join([
+                record.category or "",
+                record.product_name or "",
+                record.document_type or "",
+            ]).lower()
+            if item["category"].lower() not in haystack and not any(p.lower() in haystack for p in item["key_products"]):
+                continue
+            matched.append(record)
+            manufacturers.add(record.manufacturer)
+            confidence_values.append(record.confidence_score or 0)
+            if record.document_type:
+                covered_docs.add((record.document_type or "").lower())
+            try:
+                dpp = json.loads(record.dpp_json or "{}")
+                source_doc = dpp.get("source_document", {})
+                if source_doc.get("document_type_code"):
+                    covered_docs.add(str(source_doc["document_type_code"]).lower())
+                for std in dpp.get("standards_compliance", []):
+                    covered_standards.add(str(std).lower())
+            except Exception:
+                pass
+
+        def doc_covered(required: str) -> bool:
+            normalized = required.lower()
+            aliases = {
+                "tds": ["tds", "technical data sheet"],
+                "epd": ["epd", "environmental product declaration"],
+                "dop/ce": ["dop", "ce"],
+                "dop/ce where applicable": ["dop", "ce"],
+                "test report": ["test_report", "test report"],
+                "factory production control": ["fpc", "factory production control"],
+                "batch certificate": ["batch certificate"],
+                "mill certificate": ["mill certificate"],
+            }
+            return any(alias in covered_docs for alias in aliases.get(normalized, [normalized]))
+
+        missing_documents = [doc for doc in item["required_documents"] if not doc_covered(doc)]
+        missing_standards = [
+            std for std in item["required_standards"]
+            if not any(std.lower() in covered for covered in covered_standards)
+        ]
+        if not matched:
+            coverage_status = "gap"
+        elif missing_documents or missing_standards:
+            coverage_status = "partial"
+        else:
+            coverage_status = "covered"
         targets.append({
             **item,
-            "covered_products": matched_products,
-            "covered_manufacturers": matched_manufacturers,
-            "coverage_status": "covered" if matched_products else "gap",
+            "covered_products": len(matched),
+            "covered_manufacturers": len(manufacturers),
+            "covered_documents": sorted(covered_docs),
+            "covered_standards": sorted(covered_standards),
+            "missing_documents": missing_documents,
+            "missing_standards": missing_standards,
+            "avg_reviewed_confidence": round(sum(confidence_values) / len(confidence_values), 1) if confidence_values else 0,
+            "coverage_status": coverage_status,
         })
 
     return {
         "targets": targets,
         "total_targets": len(targets),
-        "method": "Static target catalog compared with current passport records.",
+        "method": "Target catalog compared with approved passport evidence and standards.",
     }

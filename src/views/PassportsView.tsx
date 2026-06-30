@@ -2,7 +2,7 @@ import type { ChangeEvent } from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { Database, Download, Trash2, X, FileJson, Loader2, Search, RefreshCw, FileSpreadsheet, Upload, Check, AlertCircle, Pencil, FileText } from 'lucide-react';
 import { api, resolveAssetUrl } from '../api';
-import type { PassportSummary, PassportDetail } from '../types';
+import type { PassportSummary, PassportDetail, QualityRecord } from '../types';
 
 export function PassportsView() {
   const [passports, setPassports] = useState<PassportSummary[]>([]);
@@ -26,6 +26,8 @@ export function PassportsView() {
   const [saving, setSaving] = useState(false);
   const [pdfExporting, setPdfExporting] = useState(false);
   const [ifcExporting, setIfcExporting] = useState(false);
+  const [qualityRecords, setQualityRecords] = useState<QualityRecord[]>([]);
+  const [qaForm, setQaForm] = useState({ batch_number: '', status: 'passed', tested_by: '', test_date: new Date().toISOString().slice(0, 10), disposition: 'release' });
 
   const filteredPassports = passports.filter((passport) => {
     const haystack = [
@@ -64,12 +66,28 @@ export function PassportsView() {
     try {
       const data = await api.getPassport(id);
       setDetailData(data);
+      const qa = await api.getQualityRecords(id).catch(() => ({ items: [] as QualityRecord[] }));
+      setQualityRecords(qa.items);
+      setQaForm(prev => ({ ...prev, batch_number: data.batch_number || data.dpp_json?.batch_info?.batch_number || '' }));
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Failed to load passport details.');
       setSelectedId(null);
       setDetailData(null);
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  const createQaRecord = async () => {
+    if (!detailData || !qaForm.batch_number.trim()) return;
+    try {
+      const created = await api.createQualityRecord(detailData.id, {
+        ...qaForm,
+        results: [{ property: 'reviewed_batch_release', value: qaForm.status, unit: '' }],
+      });
+      setQualityRecords(prev => [created, ...prev]);
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'QA record failed');
     }
   };
 
@@ -409,6 +427,30 @@ export function PassportsView() {
                   </div>
 
                   <div className="lg:w-2/3 flex flex-col h-full min-h-[400px]">
+                    <div className="mb-5 bg-[#242736]/60 border border-[#2e3245] rounded-2xl p-4">
+                      <div className="flex flex-col gap-3 mb-3 sm:flex-row sm:items-end">
+                        <div className="flex-1">
+                          <label className="text-xs font-semibold text-[#8b8fa3] uppercase tracking-wider mb-1 block">Batch QA/QC</label>
+                          <input value={qaForm.batch_number} onChange={e => setQaForm(prev => ({ ...prev, batch_number: e.target.value }))} placeholder="Batch number" className="w-full bg-[#0f1117] border border-[#2e3245] rounded-xl px-3 py-2 text-sm text-white" />
+                        </div>
+                        <select value={qaForm.status} onChange={e => setQaForm(prev => ({ ...prev, status: e.target.value }))} className="bg-[#0f1117] border border-[#2e3245] rounded-xl px-3 py-2 text-sm text-white">
+                          <option value="passed">Passed</option>
+                          <option value="pending">Pending</option>
+                          <option value="failed">Failed</option>
+                          <option value="quarantined">Quarantined</option>
+                        </select>
+                        <input value={qaForm.tested_by} onChange={e => setQaForm(prev => ({ ...prev, tested_by: e.target.value }))} placeholder="Inspector" className="bg-[#0f1117] border border-[#2e3245] rounded-xl px-3 py-2 text-sm text-white" />
+                        <button onClick={createQaRecord} className="bg-white text-black px-4 py-2 rounded-xl text-sm font-bold">Add QA</button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {qualityRecords.map(record => (
+                          <a key={record.id} href={`/api/passports/${detailData.id}/batch/${encodeURIComponent(record.batch_number)}/qr`} target="_blank" rel="noreferrer" className="text-xs px-3 py-1.5 rounded-full bg-[#0f1117] border border-[#2e3245] text-[#c0c4d6] hover:text-white">
+                            {record.batch_number} QR: {record.status}
+                          </a>
+                        ))}
+                        {qualityRecords.length === 0 && <span className="text-xs text-[#63677a]">No QA records yet.</span>}
+                      </div>
+                    </div>
                     <h4 className="text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center">
                       <FileJson className="w-5 h-5 mr-2" /> Digital Product Passport JSON
                     </h4>

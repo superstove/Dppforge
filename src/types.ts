@@ -39,6 +39,7 @@ export interface DppJson {
     qr_code: string;
     verification_url: string;
     scan_type: string;
+    constructask_url?: string;
   };
   confidence?: {
     overall: number;
@@ -48,10 +49,18 @@ export interface DppJson {
     standards_compliance: number;
   };
   source_document: {
+    source_document_id?: string;
     type: string;
     document_type_code?: string;
     document_title: string;
+    title?: string;
+    issuer?: string;
     revision: string;
+    issue_date?: string;
+    expiry_date?: string;
+    file_name?: string;
+    rights_status?: string;
+    review_status?: string;
     date_issued: string;
     conversion_method: string;
     converted_by: string;
@@ -67,13 +76,35 @@ export interface DppJson {
     minimum_confidence_required: number;
     field_sources: {
       field: string;
+      field_path?: string;
+      source_document_id?: string;
       source_type: string;
       source_title: string;
+      page?: string;
+      section?: string;
+      quote?: string;
       citation: string;
       confidence: number;
+      ai_confidence?: number;
+      review_status?: string;
+      reviewer?: string;
+      reviewed_at?: string;
     }[];
     quality_notes: string;
   };
+  review?: {
+    status: string;
+    reviewer: string;
+    reviewed_confidence: number;
+    reviewed_at: string;
+    notes?: string;
+  };
+  conflicts?: { field: string; severity: string; status: string; message: string }[];
+  identifiers?: Record<string, unknown>;
+  manufacturing?: Record<string, unknown>;
+  supply_chain?: Record<string, unknown>;
+  health_safety?: Record<string, unknown>;
+  lifecycle?: Record<string, unknown>;
   audit_trail?: {
     event: string;
     actor: string;
@@ -111,6 +142,10 @@ export interface ConversionResult {
   document_type?: string;
   warnings: string[];
   extracted_dpp: DppJson;
+  detected_document_type?: string;
+  product_count?: number;
+  drafts?: DppJson[];
+  document_classification?: Record<string, unknown>;
   raw_text_preview?: string;
   raw_text_length?: number;
   source_file_name?: string;
@@ -169,6 +204,12 @@ export interface ManufacturerClaim {
   role: string;
   rights_basis: string;
   requested_scope: string;
+  requested_documents?: string[];
+  permissions?: string[];
+  submitted_documents?: number[];
+  authority_scope?: string;
+  authority_status?: string;
+  revision_number?: number;
   status: string;
   reviewer: string;
   review_notes: string;
@@ -185,8 +226,46 @@ export interface ManufacturerDetail extends ManufacturerSummary {
     latest_claim_id: number | null;
     rights_basis: string;
     requested_scope: string;
+    authority_status?: string;
   };
   claims: ManufacturerClaim[];
+  document_requests?: {
+    id: number;
+    product_scope: string;
+    requested_documents: string[];
+    missing_documents: string[];
+    message: string;
+    due_date: string;
+    status: string;
+    created_at: string;
+  }[];
+  uploads?: {
+    id: number;
+    document_request_id: number | null;
+    document_type: string;
+    title: string;
+    file_name: string;
+    product_scope: string;
+    rights_status: string;
+    review_status: string;
+    created_at: string;
+  }[];
+}
+
+export interface QualityRecord {
+  id: number;
+  dpp_record_id: number;
+  batch_number: string;
+  lot_number: string;
+  serial_number: string;
+  status: string;
+  tested_by: string;
+  test_date: string;
+  results: Record<string, unknown>[];
+  attachments: Record<string, unknown>[];
+  notes: string;
+  disposition: string;
+  created_at: string;
 }
 
 export interface DashboardStats {
@@ -229,12 +308,23 @@ export interface MarketCoverage {
 export interface TargetMarketCoverage {
   targets: {
     category: string;
+    sector?: string;
+    subcategory?: string;
+    region?: string;
     key_products: string[];
     required_standards: string[];
     required_documents: string[];
+    required_certifications?: string[];
+    priority?: string;
+    expert_validation_status?: string;
     covered_products: number;
     covered_manufacturers: number;
-    coverage_status: 'covered' | 'gap';
+    covered_documents?: string[];
+    covered_standards?: string[];
+    missing_documents?: string[];
+    missing_standards?: string[];
+    avg_reviewed_confidence?: number;
+    coverage_status: 'covered' | 'partial' | 'gap';
   }[];
   total_targets: number;
   method: string;

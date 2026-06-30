@@ -1,4 +1,4 @@
-import { CarbonResult, ComplianceOverview, ComplianceResult, ComplianceRulebook, ConversionResult, DashboardStats, DppJson, ExpiryDashboard, GS1Identifier, ManufacturerClaim, ManufacturerDetail, ManufacturerSummary, MarketCoverage, NotificationLogEntry, PaginatedResponse, PassportCarbon, PassportDetail, PassportSummary, SaveResult, TargetMarketCoverage, TranslatedPassport, WebhookConfig } from './types';
+import { CarbonResult, ComplianceOverview, ComplianceResult, ComplianceRulebook, ConversionResult, DashboardStats, DppJson, ExpiryDashboard, GS1Identifier, ManufacturerClaim, ManufacturerDetail, ManufacturerSummary, MarketCoverage, NotificationLogEntry, PaginatedResponse, PassportCarbon, PassportDetail, PassportSummary, QualityRecord, SaveResult, TargetMarketCoverage, TranslatedPassport, WebhookConfig } from './types';
 
 const configuredApiUrl = import.meta.env.VITE_API_URL || '/api';
 export const API_BASE = configuredApiUrl.replace(/\/$/, '');
@@ -51,6 +51,20 @@ export const api = {
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: 'Save failed' }));
       throw new Error(err.detail || 'Save failed');
+    }
+    return await res.json();
+  },
+
+  approveDpp: async (dpp_json: DppJson, reviewer: string, reviewed_confidence: number, rights_status: string, notes = ''): Promise<{ status: string; dpp_json: DppJson }> => {
+    const res = await fetch(`${API_BASE}/convert/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dpp_json, reviewer, reviewed_confidence, rights_status, notes })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Approval failed' }));
+      const detail = typeof err.detail === 'object' ? err.detail.message || JSON.stringify(err.detail) : err.detail;
+      throw new Error(detail || 'Approval failed');
     }
     return await res.json();
   },
@@ -145,6 +159,22 @@ export const api = {
     return await res.blob();
   },
 
+  createQualityRecord: async (id: number, data: Record<string, unknown>): Promise<QualityRecord> => {
+    const res = await fetch(`${API_BASE}/passports/${id}/quality-records`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Failed to create quality record');
+    return await res.json();
+  },
+
+  getQualityRecords: async (id: number): Promise<{ total: number; items: QualityRecord[] }> => {
+    const res = await fetch(`${API_BASE}/passports/${id}/quality-records`);
+    if (!res.ok) throw new Error('Failed to load quality records');
+    return await res.json();
+  },
+
   batchUpload: async (files: File[], docType = 'tds'): Promise<{ status: string; total: number; succeeded: number; failed: number; results: ConversionResult[] }> => {
     const formData = new FormData();
     files.forEach(f => formData.append('files', f));
@@ -172,8 +202,12 @@ export const api = {
     return await res.json();
   },
 
-  getTargetMarketCoverage: async (): Promise<TargetMarketCoverage> => {
-    const res = await fetch(`${API_BASE}/analytics/target-market-coverage`);
+  getTargetMarketCoverage: async (sector?: string, region?: string): Promise<TargetMarketCoverage> => {
+    const params = new URLSearchParams();
+    if (sector) params.set('sector', sector);
+    if (region) params.set('region', region);
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    const res = await fetch(`${API_BASE}/analytics/target-market-coverage${suffix}`);
     if (!res.ok) throw new Error('Failed to load target market coverage');
     return await res.json();
   },
@@ -249,6 +283,26 @@ export const api = {
       body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error('Failed to review claim');
+    return await res.json();
+  },
+
+  createDocumentRequest: async (id: number, data: { requested_documents: string[]; product_scope: string; message: string; due_date: string }) => {
+    const res = await fetch(`${API_BASE}/manufacturers/${id}/document-requests`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Failed to create document request');
+    return await res.json();
+  },
+
+  createManufacturerUpload: async (id: number, data: Record<string, unknown>) => {
+    const res = await fetch(`${API_BASE}/manufacturers/${id}/uploads`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Failed to record manufacturer upload');
     return await res.json();
   },
 

@@ -9,20 +9,30 @@ interface UploadViewProps {
 }
 
 const DOC_TYPES = [
+  { value: 'auto', label: 'Auto Detect' },
   { value: 'tds', label: 'Technical Data Sheet (TDS)' },
   { value: 'epd', label: 'Environmental Product Declaration (EPD)' },
   { value: 'dop', label: 'Declaration of Performance (DoP)' },
   { value: 'test_report', label: 'Test Report / Lab Certificate' },
+  { value: 'sds', label: 'Safety Data Sheet (SDS)' },
+  { value: 'fpc', label: 'Factory Production Control' },
+  { value: 'certificate', label: 'Certificate' },
+  { value: 'installation', label: 'Installation' },
+  { value: 'maintenance', label: 'Maintenance' },
+  { value: 'warranty', label: 'Warranty' },
+  { value: 'end_of_life', label: 'End of Life' },
+  { value: 'catalogue', label: 'Catalogue' },
 ];
 
 type BatchResult = { file: string; status: string; detail?: string; extracted_dpp?: Record<string, unknown>; warnings?: string[] };
 
 export function UploadView({ setView, onReview }: UploadViewProps) {
   const [files, setFiles] = useState<File[]>([]);
-  const [docType, setDocType] = useState('tds');
+  const [docType, setDocType] = useState('auto');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [batchResults, setBatchResults] = useState<BatchResult[] | null>(null);
+  const [draftResult, setDraftResult] = useState<ConversionResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isBatch = files.length > 1;
@@ -36,6 +46,7 @@ export function UploadView({ setView, onReview }: UploadViewProps) {
     setFiles(prev => [...prev, ...pdfs]);
     setError('');
     setBatchResults(null);
+    setDraftResult(null);
   };
 
   const removeFile = (index: number) => {
@@ -62,7 +73,11 @@ export function UploadView({ setView, onReview }: UploadViewProps) {
     try {
       if (files.length === 1) {
         const res = await api.convertUpload(files[0], docType);
-        onReview(res);
+        if ((res.drafts?.length || 0) > 1) {
+          setDraftResult(res);
+        } else {
+          onReview(res);
+        }
       } else {
         const res = await api.batchUpload(files, docType);
         setBatchResults(res.results as unknown as BatchResult[]);
@@ -82,6 +97,11 @@ export function UploadView({ setView, onReview }: UploadViewProps) {
   const reviewBatchItem = (item: BatchResult) => {
     if (item.status !== 'review_required') return;
     onReview(item as unknown as ConversionResult);
+  };
+
+  const reviewDraft = (draftIndex: number) => {
+    if (!draftResult?.drafts) return;
+    onReview({ ...draftResult, extracted_dpp: draftResult.drafts[draftIndex] });
   };
 
   return (
@@ -193,6 +213,25 @@ export function UploadView({ setView, onReview }: UploadViewProps) {
                 {r.status === 'review_required' ? 'Click to review' : r.detail || 'Failed'}
               </span>
             </div>
+          ))}
+        </div>
+      )}
+
+      {draftResult?.drafts && draftResult.drafts.length > 1 && (
+        <div className="mb-6 space-y-2">
+          <h3 className="text-sm font-semibold text-[#63677a] uppercase tracking-wider mb-3">
+            Detected {draftResult.product_count || draftResult.drafts.length} products in {draftResult.detected_document_type?.toUpperCase() || 'document'}
+          </h3>
+          {draftResult.drafts.map((draft, index) => (
+            <button
+              key={`${draft.passport_id}-${index}`}
+              onClick={() => reviewDraft(index)}
+              className="w-full flex items-center gap-3 rounded-xl px-4 py-3 border bg-[#1a1d27] border-[#2e3245] hover:border-white/40 text-left transition-colors"
+            >
+              <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+              <span className="text-sm text-white font-medium flex-1 truncate">{draft.product_name}</span>
+              <span className="text-xs text-[#8b8fa3]">{draft.manufacturer || 'Unknown manufacturer'}</span>
+            </button>
           ))}
         </div>
       )}

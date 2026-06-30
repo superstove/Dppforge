@@ -9,6 +9,7 @@ export function MarketCoverageView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [sector, setSector] = useState('');
 
   useEffect(() => {
     let mounted = true;
@@ -24,7 +25,7 @@ export function MarketCoverageView() {
         if (mounted) setLoading(false);
       });
 
-    api.getTargetMarketCoverage()
+    api.getTargetMarketCoverage(sector || undefined)
       .then(targetCoverage => {
         if (mounted) setTargets(targetCoverage);
       })
@@ -33,7 +34,7 @@ export function MarketCoverageView() {
       });
 
     return () => { mounted = false; };
-  }, []);
+  }, [sector]);
 
   if (loading) return <div className="flex items-center justify-center h-64 text-[#8b8fa3]">Loading market coverage...</div>;
   if (error) return <div className="p-6 text-red-400">{error}</div>;
@@ -45,6 +46,17 @@ export function MarketCoverageView() {
         <Globe className="w-6 h-6 text-blue-400" />
         <h1 className="text-2xl font-bold text-white">Market Coverage</h1>
         <span className="w-full text-sm text-[#8b8fa3] sm:ml-2 sm:w-auto">{data.total_categories} categories</span>
+        <div className="flex gap-2 w-full sm:w-auto sm:ml-auto">
+          {[
+            { value: '', label: 'All' },
+            { value: 'construction', label: 'Construction' },
+            { value: 'road_construction', label: 'Road' },
+          ].map(option => (
+            <button key={option.value} onClick={() => setSector(option.value)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${sector === option.value ? 'bg-white text-black' : 'bg-[#1a1d27] border border-[#2e3245] text-[#8b8fa3]'}`}>
+              {option.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {targets && (
@@ -58,9 +70,15 @@ export function MarketCoverageView() {
                     <h3 className="text-white font-semibold">{target.category}</h3>
                     <p className="text-xs text-[#8b8fa3] mt-1">{target.covered_products} product(s), {target.covered_manufacturers} manufacturer(s) covered</p>
                   </div>
-                  <span className={`text-xs px-2 py-1 rounded-full ${target.coverage_status === 'covered' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                  <span className={`text-xs px-2 py-1 rounded-full ${target.coverage_status === 'covered' ? 'bg-green-500/10 text-green-400' : target.coverage_status === 'partial' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-red-500/10 text-red-400'}`}>
                     {target.coverage_status}
                   </span>
+                </div>
+                <div className="flex flex-wrap gap-2 mb-3 text-xs text-[#8b8fa3]">
+                  <span>{target.sector?.replace('_', ' ')}</span>
+                  <span>{target.region}</span>
+                  <span>{target.expert_validation_status}</span>
+                  <span>Avg reviewed confidence: {target.avg_reviewed_confidence || 0}%</span>
                 </div>
                 <div className="flex flex-wrap gap-1.5 mb-3">
                   {target.key_products.map(product => (
@@ -72,6 +90,11 @@ export function MarketCoverageView() {
                     <span key={std} className="text-xs border border-[#2e3245] text-[#8b8fa3] px-2 py-1 rounded">{std}</span>
                   ))}
                 </div>
+                {((target.missing_documents?.length || 0) > 0 || (target.missing_standards?.length || 0) > 0) && (
+                  <div className="mt-3 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-3 text-xs text-yellow-200">
+                    Missing: {[...(target.missing_documents || []), ...(target.missing_standards || [])].join(', ')}
+                  </div>
+                )}
               </div>
             ))}
           </div>

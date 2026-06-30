@@ -54,11 +54,47 @@ class ManufacturerClaim(Base):
     role = Column(String, default="")
     rights_basis = Column(Text, default="")
     requested_scope = Column(Text, default="")
+    requested_documents = Column(Text, default="[]")
+    permissions = Column(Text, default="[]")
+    submitted_documents = Column(Text, default="[]")
+    authority_scope = Column(Text, default="")
+    authority_status = Column(String, default="pending")
+    revision_number = Column(Integer, default=0)
     status = Column(String, default="submitted")  # submitted, approved, rejected
     reviewer = Column(String, default="")
     review_notes = Column(Text, default="")
     created_at = Column(DateTime, default=_utcnow)
     reviewed_at = Column(DateTime, nullable=True)
+
+
+class ManufacturerDocumentRequest(Base):
+    __tablename__ = "manufacturer_document_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    manufacturer_id = Column(Integer, ForeignKey("manufacturers.id"), nullable=False, index=True)
+    product_scope = Column(String, default="")
+    requested_documents = Column(Text, default="[]")
+    message = Column(Text, default="")
+    due_date = Column(String, default="")
+    status = Column(String, default="open")
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+
+class ManufacturerUpload(Base):
+    __tablename__ = "manufacturer_uploads"
+
+    id = Column(Integer, primary_key=True, index=True)
+    manufacturer_id = Column(Integer, ForeignKey("manufacturers.id"), nullable=False, index=True)
+    document_request_id = Column(Integer, ForeignKey("manufacturer_document_requests.id"), nullable=True, index=True)
+    document_type = Column(String, default="")
+    title = Column(String, default="")
+    file_name = Column(String, default="")
+    product_scope = Column(String, default="")
+    rights_status = Column(String, default="internal_review")
+    review_status = Column(String, default="pending")
+    metadata_json = Column(Text, default="{}")
+    created_at = Column(DateTime, default=_utcnow)
 
 
 class WebhookConfig(Base):
@@ -119,3 +155,74 @@ class DPPRecord(Base):
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     manufacturer_ref = relationship("Manufacturer", back_populates="passports")
+
+
+class SourceDocument(Base):
+    __tablename__ = "source_documents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    passport_id = Column(String, index=True)
+    document_type = Column(String, index=True)
+    title = Column(String, default="")
+    issuer = Column(String, default="")
+    revision = Column(String, default="")
+    issue_date = Column(String, default="")
+    expiry_date = Column(String, default="")
+    file_name = Column(String, default="")
+    rights_status = Column(String, default="internal_review")
+    review_status = Column(String, default="pending")
+    metadata_json = Column(Text, default="{}")
+    created_at = Column(DateTime, default=_utcnow)
+
+
+class FieldEvidence(Base):
+    __tablename__ = "field_evidence"
+
+    id = Column(Integer, primary_key=True, index=True)
+    passport_id = Column(String, index=True)
+    source_document_id = Column(Integer, ForeignKey("source_documents.id"), nullable=True, index=True)
+    field_path = Column(String, index=True)
+    page = Column(String, default="")
+    section = Column(String, default="")
+    quote = Column(Text, default="")
+    extraction_method = Column(String, default="ai")
+    ai_confidence = Column(Float, default=0.0)
+    reviewer_status = Column(String, default="pending")
+    reviewer = Column(String, default="")
+    reviewed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=_utcnow)
+
+
+class QualityRecord(Base):
+    __tablename__ = "quality_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    dpp_record_id = Column(Integer, ForeignKey("dpp_records.id"), nullable=False, index=True)
+    batch_number = Column(String, default="", index=True)
+    lot_number = Column(String, default="")
+    serial_number = Column(String, default="")
+    status = Column(String, default="pending")
+    tested_by = Column(String, default="")
+    test_date = Column(String, default="")
+    results_json = Column(Text, default="[]")
+    attachments_json = Column(Text, default="[]")
+    notes = Column(Text, default="")
+    disposition = Column(String, default="")
+    created_at = Column(DateTime, default=_utcnow)
+
+
+class MarketTarget(Base):
+    __tablename__ = "market_targets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sector = Column(String, default="construction", index=True)
+    category = Column(String, default="", index=True)
+    subcategory = Column(String, default="")
+    region = Column(String, default="global", index=True)
+    key_products = Column(Text, default="[]")
+    required_documents = Column(Text, default="[]")
+    required_standards = Column(Text, default="[]")
+    required_certifications = Column(Text, default="[]")
+    priority = Column(String, default="medium")
+    expert_validation_status = Column(String, default="requires_expert_review")
+    created_at = Column(DateTime, default=_utcnow)

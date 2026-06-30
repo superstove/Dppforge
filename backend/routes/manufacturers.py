@@ -14,7 +14,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import CRMActivity, DPPRecord, Manufacturer, ManufacturerClaim
+from models import CRMActivity, DPPRecord, Manufacturer, ManufacturerClaim, ManufacturerDocumentRequest, ManufacturerUpload
 
 router = APIRouter()
 
@@ -54,16 +54,45 @@ class ClaimCreate(BaseModel):
     role: str = ""
     rights_basis: str = ""
     requested_scope: str = ""
+    requested_documents: list[str] = Field(default_factory=list)
+    permissions: list[str] = Field(default_factory=list)
+    submitted_documents: list[int] = Field(default_factory=list)
 
 
 class ClaimReview(BaseModel):
     status: str
     reviewer: str = ""
     review_notes: str = ""
+    authority_scope: str = ""
+
+
+class DocumentRequestCreate(BaseModel):
+    requested_documents: list[str] = Field(default_factory=list)
+    product_scope: str = ""
+    message: str = ""
+    due_date: str = ""
+
+
+class ManufacturerUploadCreate(BaseModel):
+    document_request_id: int | None = None
+    document_type: str
+    title: str = ""
+    file_name: str = ""
+    product_scope: str = ""
+    rights_status: str = "internal_review"
+    metadata: dict = Field(default_factory=dict)
 
 
 VALID_STAGES = {"target", "engaged", "onboarded", "active"}
-VALID_CLAIM_STATUSES = {"submitted", "approved", "rejected"}
+VALID_CLAIM_STATUSES = {"submitted", "approved", "rejected", "revision_requested"}
+
+
+def _loads_list(value: str) -> list:
+    try:
+        parsed = json.loads(value or "[]")
+        return parsed if isinstance(parsed, list) else []
+    except Exception:
+        return []
 
 
 def _serialize_claim(claim: ManufacturerClaim) -> dict:
@@ -75,6 +104,12 @@ def _serialize_claim(claim: ManufacturerClaim) -> dict:
         "role": claim.role,
         "rights_basis": claim.rights_basis,
         "requested_scope": claim.requested_scope,
+        "requested_documents": _loads_list(claim.requested_documents),
+        "permissions": _loads_list(claim.permissions),
+        "submitted_documents": _loads_list(claim.submitted_documents),
+        "authority_scope": claim.authority_scope,
+        "authority_status": claim.authority_status,
+        "revision_number": claim.revision_number,
         "status": claim.status,
         "reviewer": claim.reviewer,
         "review_notes": claim.review_notes,
@@ -97,6 +132,40 @@ def _claim_profile(db: Session, mfr_id: int) -> dict:
         "latest_claim_id": latest.id if latest else None,
         "rights_basis": latest.rights_basis if latest else "",
         "requested_scope": latest.requested_scope if latest else "",
+        "authority_status": latest.authority_status if latest else "none",
+    }
+
+
+def _serialize_document_request(request: ManufacturerDocumentRequest, uploads: list[ManufacturerUpload] | None = None) -> dict:
+    requested = _loads_list(request.requested_documents)
+    uploaded_types = {u.document_type for u in uploads or [] if u.document_request_id == request.id}
+    return {
+        "id": request.id,
+        "manufacturer_id": request.manufacturer_id,
+        "product_scope": request.product_scope,
+        "requested_documents": requested,
+        "missing_documents": [doc for doc in requested if doc not in uploaded_types],
+        "message": request.message,
+        "due_date": request.due_date,
+        "status": request.status,
+        "created_at": str(request.created_at),
+        "updated_at": str(request.updated_at),
+    }
+
+
+def _serialize_upload(upload: ManufacturerUpload) -> dict:
+    return {
+        "id": upload.id,
+        "manufacturer_id": upload.manufacturer_id,
+        "document_request_id": upload.document_request_id,
+        "document_type": upload.document_type,
+        "title": upload.title,
+        "file_name": upload.file_name,
+        "product_scope": upload.product_scope,
+        "rights_status": upload.rights_status,
+        "review_status": upload.review_status,
+        "metadata": json.loads(upload.metadata_json or "{}"),
+        "created_at": str(upload.created_at),
     }
 
 
@@ -186,7 +255,21 @@ def get_manufacturer(mfr_id: int, db: Session = Depends(get_db)):
         .limit(20)
         .all()
     )
+    requests = (
+        db.query(ManufacturerDocumentRequest)
+        .filter(ManufacturerDocumentRequest.manufacturer_id == mfr_id)
+        .order_by(ManufacturerDocumentRequest.created_at.desc())
+        .all()
+    )
+    uploads = (
+        db.query(ManufacturerUpload)
+        .filter(ManufacturerUpload.manufacturer_id == mfr_id)
+        .order_by(ManufacturerUpload.created_at.desc())
+        .all()
+    )
     result["claims"] = [_serialize_claim(c) for c in claims]
+    result["document_requests"] = [_serialize_document_request(r, uploads) for r in requests]
+    result["uploads"] = [_serialize_upload(u) for u in uploads]
     result["passports"] = [
         {
             "id": p.id,
@@ -226,6 +309,9 @@ def submit_claim(mfr_id: int, payload: ClaimCreate, db: Session = Depends(get_db
         rights_basis=payload.rights_basis,
         requested_scope=payload.requested_scope,
         status="submitted",
+        requested_documents=json.dumps(payload.requested_documents),
+        permissions=json.dumps(payload.permissions),
+        submitted_documents=json.dumps(payload.submitted_documents),
     )
     db.add(claim)
     db.add(CRMActivity(
@@ -236,6 +322,64 @@ def submit_claim(mfr_id: int, payload: ClaimCreate, db: Session = Depends(get_db
     db.commit()
     db.refresh(claim)
     return _serialize_claim(claim)
+
+
+@router.post("/{mfr_id}/document-requests", status_code=201)
+def create_document_request(mfr_id: int, payload: DocumentRequestCreate, db: Session = Depends(get_db)):
+    mfr = db.query(Manufacturer).filter(Manufacturer.id == mfr_id).first()
+    if not mfr:
+        raise HTTPException(status_code=404, detail="Manufacturer not found")
+    request = ManufacturerDocumentRequest(
+        manufacturer_id=mfr_id,
+        product_scope=payload.product_scope,
+        requested_documents=json.dumps(payload.requested_documents),
+        message=payload.message,
+        due_date=payload.due_date,
+    )
+    db.add(request)
+    db.add(CRMActivity(
+        manufacturer_id=mfr_id,
+        activity_type="document_request",
+        description=f"Requested documents: {', '.join(payload.requested_documents)} for {payload.product_scope or 'manufacturer portfolio'}.",
+    ))
+    db.commit()
+    db.refresh(request)
+    return _serialize_document_request(request, [])
+
+
+@router.post("/{mfr_id}/uploads", status_code=201)
+def create_manufacturer_upload(mfr_id: int, payload: ManufacturerUploadCreate, db: Session = Depends(get_db)):
+    mfr = db.query(Manufacturer).filter(Manufacturer.id == mfr_id).first()
+    if not mfr:
+        raise HTTPException(status_code=404, detail="Manufacturer not found")
+    if payload.document_request_id:
+        request = (
+            db.query(ManufacturerDocumentRequest)
+            .filter(ManufacturerDocumentRequest.id == payload.document_request_id, ManufacturerDocumentRequest.manufacturer_id == mfr_id)
+            .first()
+        )
+        if not request:
+            raise HTTPException(status_code=404, detail="Document request not found")
+    upload = ManufacturerUpload(
+        manufacturer_id=mfr_id,
+        document_request_id=payload.document_request_id,
+        document_type=payload.document_type,
+        title=payload.title,
+        file_name=payload.file_name,
+        product_scope=payload.product_scope,
+        rights_status=payload.rights_status,
+        review_status="pending",
+        metadata_json=json.dumps(payload.metadata),
+    )
+    db.add(upload)
+    db.add(CRMActivity(
+        manufacturer_id=mfr_id,
+        activity_type="document_upload",
+        description=f"Received {payload.document_type} metadata for {payload.product_scope or payload.title}.",
+    ))
+    db.commit()
+    db.refresh(upload)
+    return _serialize_upload(upload)
 
 
 @router.patch("/claims/{claim_id}")
@@ -251,6 +395,14 @@ def review_claim(claim_id: int, payload: ClaimReview, db: Session = Depends(get_
     claim.reviewer = payload.reviewer
     claim.review_notes = payload.review_notes
     claim.reviewed_at = datetime.now(timezone.utc)
+    if payload.status == "revision_requested":
+        claim.revision_number = (claim.revision_number or 0) + 1
+        claim.authority_status = "revision_requested"
+    elif payload.status == "approved":
+        claim.authority_status = "authorized"
+        claim.authority_scope = payload.authority_scope or claim.requested_scope
+    elif payload.status == "rejected":
+        claim.authority_status = "rejected"
     db.add(CRMActivity(
         manufacturer_id=claim.manufacturer_id,
         activity_type="claim_review",

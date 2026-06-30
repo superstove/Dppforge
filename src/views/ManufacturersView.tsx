@@ -144,6 +144,8 @@ function DetailPanel({ detail, onClose, onRefresh }: { detail: ManufacturerDetai
   const [activityDesc, setActivityDesc] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [claimForm, setClaimForm] = useState({ claimant_name: detail.contact_person || '', claimant_email: detail.contact_email || '', role: '', rights_basis: '', requested_scope: detail.categories || '' });
+  const [requestForm, setRequestForm] = useState({ requested_documents: 'TDS, EPD, DoP', product_scope: detail.categories || '', message: 'Please upload current product evidence.', due_date: '' });
+  const [uploadForm, setUploadForm] = useState({ document_type: 'TDS', title: '', file_name: '', product_scope: detail.categories || '', rights_status: 'manufacturer_authorized' });
   const [outreach, setOutreach] = useState<{ email_subject: string; email_body: string; phone_script: string; video_agenda: string[] } | null>(null);
 
   const addActivity = async () => {
@@ -167,7 +169,35 @@ function DetailPanel({ detail, onClose, onRefresh }: { detail: ManufacturerDetai
     const latest = detail.claims?.[0];
     if (!latest) return;
     setSubmitting(true);
-    await api.reviewManufacturerClaim(latest.id, { status: 'approved', reviewer: 'DPP Ops', review_notes: 'Approved from CRM review.' });
+    await api.reviewManufacturerClaim(latest.id, { status: 'approved', reviewer: 'DPP Ops', review_notes: 'Approved from CRM review.', authority_scope: latest.requested_scope || detail.categories });
+    setSubmitting(false);
+    onRefresh();
+  };
+
+  const requestRevision = async () => {
+    const latest = detail.claims?.[0];
+    if (!latest) return;
+    setSubmitting(true);
+    await api.reviewManufacturerClaim(latest.id, { status: 'revision_requested', reviewer: 'DPP Ops', review_notes: 'More evidence required.' });
+    setSubmitting(false);
+    onRefresh();
+  };
+
+  const createRequest = async () => {
+    setSubmitting(true);
+    await api.createDocumentRequest(detail.id, {
+      requested_documents: requestForm.requested_documents.split(',').map(item => item.trim()).filter(Boolean),
+      product_scope: requestForm.product_scope,
+      message: requestForm.message,
+      due_date: requestForm.due_date,
+    });
+    setSubmitting(false);
+    onRefresh();
+  };
+
+  const createUpload = async () => {
+    setSubmitting(true);
+    await api.createManufacturerUpload(detail.id, uploadForm);
     setSubmitting(false);
     onRefresh();
   };
@@ -197,6 +227,35 @@ function DetailPanel({ detail, onClose, onRefresh }: { detail: ManufacturerDetai
           {detail.notes && <div className="text-xs text-[#63677a] italic">{detail.notes}</div>}
           </div>
 
+          <div className="bg-[#1a1d27] border border-[#2e3245] rounded-xl p-4">
+            <h3 className="text-xs font-semibold text-[#8b8fa3] uppercase tracking-wider mb-3">Document Requests & Uploads</h3>
+            <div className="grid grid-cols-1 gap-2 mb-3 sm:grid-cols-2">
+              <input value={requestForm.requested_documents} onChange={e => setRequestForm({ ...requestForm, requested_documents: e.target.value })} placeholder="TDS, EPD, DoP" className="bg-[#0f1117] border border-[#2e3245] rounded-lg px-3 py-2 text-xs text-white" />
+              <input value={requestForm.product_scope} onChange={e => setRequestForm({ ...requestForm, product_scope: e.target.value })} placeholder="Product scope" className="bg-[#0f1117] border border-[#2e3245] rounded-lg px-3 py-2 text-xs text-white" />
+              <input value={requestForm.due_date} onChange={e => setRequestForm({ ...requestForm, due_date: e.target.value })} placeholder="Due date" className="bg-[#0f1117] border border-[#2e3245] rounded-lg px-3 py-2 text-xs text-white" />
+              <button onClick={createRequest} disabled={submitting} className="py-2 rounded-lg bg-[#242736] text-white text-xs font-medium disabled:opacity-40">Create Request</button>
+            </div>
+            <div className="grid grid-cols-1 gap-2 mb-3 sm:grid-cols-2">
+              <input value={uploadForm.document_type} onChange={e => setUploadForm({ ...uploadForm, document_type: e.target.value })} placeholder="Document type" className="bg-[#0f1117] border border-[#2e3245] rounded-lg px-3 py-2 text-xs text-white" />
+              <input value={uploadForm.file_name} onChange={e => setUploadForm({ ...uploadForm, file_name: e.target.value })} placeholder="File name" className="bg-[#0f1117] border border-[#2e3245] rounded-lg px-3 py-2 text-xs text-white" />
+              <input value={uploadForm.title} onChange={e => setUploadForm({ ...uploadForm, title: e.target.value })} placeholder="Title" className="bg-[#0f1117] border border-[#2e3245] rounded-lg px-3 py-2 text-xs text-white" />
+              <button onClick={createUpload} disabled={submitting} className="py-2 rounded-lg bg-white text-black text-xs font-medium disabled:opacity-40">Record Upload</button>
+            </div>
+            <div className="space-y-2">
+              {(detail.document_requests || []).map(request => (
+                <div key={request.id} className="rounded-lg bg-[#0f1117] border border-[#2e3245] p-3 text-xs">
+                  <div className="text-white font-medium">{request.product_scope || 'Portfolio request'}</div>
+                  <div className="text-[#8b8fa3]">Missing: {request.missing_documents.length ? request.missing_documents.join(', ') : 'None'}</div>
+                </div>
+              ))}
+              {(detail.uploads || []).map(upload => (
+                <div key={upload.id} className="rounded-lg bg-[#0f1117] border border-[#2e3245] p-3 text-xs text-[#c0c4d6]">
+                  {upload.document_type}: {upload.file_name || upload.title} ({upload.review_status})
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* Claim profile */}
           <div className="bg-[#1a1d27] border border-[#2e3245] rounded-xl p-4">
             <div className="flex items-center justify-between gap-3 mb-3">
@@ -216,6 +275,7 @@ function DetailPanel({ detail, onClose, onRefresh }: { detail: ManufacturerDetai
             <input value={claimForm.rights_basis} onChange={e => setClaimForm({ ...claimForm, rights_basis: e.target.value })} placeholder="Rights basis, e.g. authorized manufacturer data steward" className="w-full bg-[#0f1117] border border-[#2e3245] rounded-lg px-3 py-2 text-xs text-white placeholder-[#63677a] mb-3" />
             <div className="flex flex-col gap-2 sm:flex-row">
               <button onClick={submitClaim} disabled={submitting} className="flex-1 py-2 rounded-lg bg-white text-black text-xs font-medium disabled:opacity-40">Submit Claim</button>
+              <button onClick={requestRevision} disabled={submitting || !detail.claims?.length} className="px-3 py-2 rounded-lg bg-yellow-500/10 text-yellow-400 text-xs font-medium disabled:opacity-40">Revision</button>
               <button onClick={approveLatestClaim} disabled={submitting || !detail.claims?.length} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-green-500/10 text-green-400 text-xs font-medium disabled:opacity-40">
                 <CheckCircle className="w-3.5 h-3.5" /> Approve
               </button>

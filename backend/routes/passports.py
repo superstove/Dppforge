@@ -11,11 +11,12 @@ from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
 from fastapi.responses import Response, StreamingResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session, defer
 
 from database import get_db
-from models import DPPRecord
+from models import DPPRecord, QualityRecord
 from url_utils import dpp_verification_url
 from utils import generate_qr_bytes
 
@@ -28,6 +29,37 @@ EXPORT_COLUMNS = [
     "standards_count", "properties_count", "status", "created_at",
     "description", "standards_compliance", "technical_properties",
 ]
+
+
+class QualityRecordInput(BaseModel):
+    batch_number: str
+    lot_number: str = ""
+    serial_number: str = ""
+    status: str = "pending"
+    tested_by: str = ""
+    test_date: str = ""
+    results: list[dict] = Field(default_factory=list)
+    attachments: list[dict] = Field(default_factory=list)
+    notes: str = ""
+    disposition: str = ""
+
+
+def _serialize_quality_record(record: QualityRecord) -> dict:
+    return {
+        "id": record.id,
+        "dpp_record_id": record.dpp_record_id,
+        "batch_number": record.batch_number,
+        "lot_number": record.lot_number,
+        "serial_number": record.serial_number,
+        "status": record.status,
+        "tested_by": record.tested_by,
+        "test_date": record.test_date,
+        "results": json.loads(record.results_json or "[]"),
+        "attachments": json.loads(record.attachments_json or "[]"),
+        "notes": record.notes,
+        "disposition": record.disposition,
+        "created_at": str(record.created_at),
+    }
 
 
 def _record_to_export_row(record: DPPRecord) -> dict:
@@ -346,6 +378,10 @@ def get_passport(record_id: int, db: Session = Depends(get_db)):
         "batch_number": record.batch_number,
         "origin_country": record.origin_country,
         "conversion_method": record.conversion_method,
+        "confidence_score": record.confidence_score or 0,
+        "document_type": record.document_type,
+        "standards_count": record.standards_count,
+        "properties_count": record.properties_count,
         "qr_code_url": f"/api/passports/{record.id}/qr",
         "constructask_qr_code_url": f"/api/passports/{record.id}/constructask-qr",
         "status": record.status,
@@ -364,6 +400,90 @@ def get_qr_code(record_id: int, request: Request, db: Session = Depends(get_db))
         media_type="image/png",
         headers={"Cache-Control": "public, max-age=86400"},
     )
+
+
+@router.post("/{record_id}/quality-records", status_code=201)
+def create_quality_record(record_id: int, payload: QualityRecordInput, db: Session = Depends(get_db)):
+    record = db.query(DPPRecord).filter(DPPRecord.id == record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Passport not found")
+
+    quality = QualityRecord(
+        dpp_record_id=record_id,
+        batch_number=payload.batch_number,
+        lot_number=payload.lot_number,
+        serial_number=payload.serial_number,
+        status=payload.status,
+        tested_by=payload.tested_by,
+        test_date=payload.test_date,
+        results_json=json.dumps(payload.results),
+        attachments_json=json.dumps(payload.attachments),
+        notes=payload.notes,
+        disposition=payload.disposition,
+    )
+    db.add(quality)
+    db.commit()
+    db.refresh(quality)
+    return _serialize_quality_record(quality)
+
+
+@router.get("/{record_id}/quality-records")
+def list_quality_records(record_id: int, db: Session = Depends(get_db)):
+    record = db.query(DPPRecord).filter(DPPRecord.id == record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Passport not found")
+    records = (
+        db.query(QualityRecord)
+        .filter(QualityRecord.dpp_record_id == record_id)
+        .order_by(QualityRecord.created_at.desc())
+        .all()
+    )
+    return {"items": [_serialize_quality_record(r) for r in records], "total": len(records)}
+
+
+def _batch_envelope(record: DPPRecord, batch_number: str, request: Request | None = None, db: Session | None = None) -> dict:
+    dpp = json.loads(record.dpp_json)
+    quality = None
+    if db:
+        quality = (
+            db.query(QualityRecord)
+            .filter(QualityRecord.dpp_record_id == record.id, QualityRecord.batch_number == batch_number)
+            .order_by(QualityRecord.created_at.desc())
+            .first()
+        )
+    return {
+        "qr_level": "batch",
+        "batch_number": batch_number,
+        "lot_number": quality.lot_number if quality else dpp.get("batch_info", {}).get("lot_number", ""),
+        "serial_number": quality.serial_number if quality else "",
+        "quality_status": quality.status if quality else "unrecorded",
+        "quality_record": _serialize_quality_record(quality) if quality else None,
+        "product": {
+            "record_id": record.id,
+            "passport_id": record.passport_id,
+            "product_name": record.product_name,
+            "manufacturer": record.manufacturer,
+            "category": record.category,
+            "verification_url": dpp_verification_url(record.id, request) if request else dpp.get("qr_verification", {}).get("verification_url", ""),
+        },
+    }
+
+
+@router.get("/{record_id}/batch/{batch_number}")
+def get_batch_envelope(record_id: int, batch_number: str, request: Request, db: Session = Depends(get_db)):
+    record = db.query(DPPRecord).filter(DPPRecord.id == record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Passport not found")
+    return _batch_envelope(record, batch_number, request, db)
+
+
+@router.get("/{record_id}/batch/{batch_number}/qr")
+def get_batch_qr(record_id: int, batch_number: str, request: Request, db: Session = Depends(get_db)):
+    record = db.query(DPPRecord).filter(DPPRecord.id == record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Passport not found")
+    url = f"{dpp_verification_url(record.id, request)}&batch={batch_number}"
+    return Response(content=generate_qr_bytes(url), media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
 
 
 @router.get("/{record_id}/constructask-qr")
@@ -629,6 +749,23 @@ def _generate_ifc(dpp: dict, record: DPPRecord) -> str:
             lines.append(f"#{pset_sus_id}=IFCPROPERTYSET('{_ifc_guid()}',#{owner_id},'DPP_Sustainability',$,({','.join(props_sus)}));")
             rel_sus = nid()
             lines.append(f"#{rel_sus}=IFCRELDEFINESBYPROPERTIES('{_ifc_guid()}',#{owner_id},$,$,(#{building_id}),#{pset_sus_id});")
+
+    lifecycle = dpp.get("lifecycle", {})
+    if lifecycle:
+        props_lifecycle = []
+        for label, value in lifecycle.items():
+            if not value:
+                continue
+            pid = nid()
+            vid = nid()
+            lines.append(f"#{vid}=IFCTEXT({ifc_str(str(value))});")
+            lines.append(f"#{pid}=IFCPROPERTYSINGLEVALUE({ifc_str(label.title().replace('_', ' '))},$,#{vid},$);")
+            props_lifecycle.append(f"#{pid}")
+        if props_lifecycle:
+            pset_lifecycle_id = nid()
+            lines.append(f"#{pset_lifecycle_id}=IFCPROPERTYSET('{_ifc_guid()}',#{owner_id},'DPP_Lifecycle',$,({','.join(props_lifecycle)}));")
+            rel_lifecycle = nid()
+            lines.append(f"#{rel_lifecycle}=IFCRELDEFINESBYPROPERTIES('{_ifc_guid()}',#{owner_id},$,$,(#{building_id}),#{pset_lifecycle_id});")
 
     lines.append("ENDSEC;")
     lines.append("END-ISO-10303-21;")

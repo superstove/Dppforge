@@ -8,7 +8,8 @@ Manual + Automatic conversion endpoints. No auth required (standalone app).
 import json
 import os
 import re
-from datetime import date, datetime
+from copy import deepcopy
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -196,11 +197,55 @@ def _ocr_pdf_pages(pdf_bytes: bytes, max_pages: int = 10) -> str:
 # ---------------------------------------------------------------------------
 
 DOC_PROMPTS = {
+    "auto": "Auto-detected construction product evidence",
     "tds": "Technical Data Sheet",
     "epd": "Environmental Product Declaration (EPD)",
     "dop": "Declaration of Performance (DoP / CE marking)",
     "test_report": "Test Report / Laboratory Certificate",
+    "sds": "Safety Data Sheet (SDS)",
+    "fpc": "Factory Production Control certificate",
+    "certificate": "Quality, environmental, or occupational certificate",
+    "installation": "Installation or application instruction",
+    "maintenance": "Maintenance instruction",
+    "warranty": "Warranty document",
+    "end_of_life": "Recycling or end-of-life instruction",
+    "catalogue": "Product catalogue",
 }
+
+
+def classify_document(text: str, requested_type: str = "auto") -> dict:
+    lowered = text.lower()
+    rules = [
+        ("sds", ["safety data sheet", "section 2 hazards", "hazard identification", "ghs"]),
+        ("dop", ["declaration of performance", "avcp", "notified body", "ce marking"]),
+        ("epd", ["environmental product declaration", "program operator", "declared unit", "lca"]),
+        ("fpc", ["factory production control", "fpc certificate"]),
+        ("test_report", ["test report", "laboratory report", "test certificate"]),
+        ("installation", ["installation instruction", "application instruction", "method statement"]),
+        ("maintenance", ["maintenance instruction", "inspection interval"]),
+        ("warranty", ["warranty", "guarantee"]),
+        ("end_of_life", ["end of life", "recycling instruction", "disposal instruction"]),
+        ("catalogue", ["product catalogue", "catalogue", "brochure"]),
+    ]
+    detected = "tds"
+    for doc_type, needles in rules:
+        if any(needle in lowered for needle in needles):
+            detected = doc_type
+            break
+    if requested_type in DOC_PROMPTS and requested_type != "auto":
+        detected = requested_type
+    product_count = max(1, len(re.findall(r"\bproduct\s+[a-z0-9][\w -]*", lowered)))
+    return {
+        "document_type": detected,
+        "document_label": DOC_PROMPTS.get(detected, DOC_PROMPTS["tds"]),
+        "product_count": product_count,
+        "classification_method": "keyword",
+    }
+
+
+def ai_extract_product_drafts(text: str, doc_type: str = "tds") -> list[dict]:
+    extracted = ai_extract_fields(text, doc_type)
+    return [extracted]
 
 
 def _build_extraction_prompt(text: str, doc_type: str = "tds") -> str:
@@ -477,7 +522,9 @@ def _extract_with_regex(text: str) -> dict:
             return True
         if lowered.startswith(("http", "www", "page ")):
             return True
-        if lowered in {"technical data sheet", "product data sheet", "data sheet", "tds"}:
+        if lowered in {"technical data sheet", "technical data sheet (tds)", "product data sheet", "data sheet", "tds"}:
+            return True
+        if lowered.startswith(("sample document", "document no", "revision:", "issue date", "property value unit")):
             return True
         return False
 
@@ -492,15 +539,31 @@ def _extract_with_regex(text: str) -> dict:
             return False
         return bool(re.search(r"[A-Za-z]{3,}", value))
 
-    for line in lines[:10]:
+    for line in lines[:40]:
         line = line.strip()
+        product_match = re.match(r"^(?:product|product name)\s*[:=-]\s*(.+)$", line, flags=re.IGNORECASE)
+        if product_match and looks_like_product_name(product_match.group(1)):
+            extracted["product_name"] = product_match.group(1).strip()
+            break
+
+    for line in lines[:40]:
+        line = line.strip()
+        manufacturer_match = re.match(r"^(?:manufacturer|company|manufactured by)\s*[:=-]\s*(.+)$", line, flags=re.IGNORECASE)
+        if manufacturer_match:
+            extracted["manufacturer"] = manufacturer_match.group(1).strip()
+            break
+
+    for line in lines[:15]:
+        line = line.strip()
+        if extracted.get("product_name"):
+            break
         if looks_like_product_name(line):
             extracted.setdefault("product_name", line)
             break
 
     product_name = extracted.get("product_name", "")
     inferred_mfr = _infer_manufacturer(text, product_name)
-    if inferred_mfr:
+    if inferred_mfr and not extracted.get("manufacturer"):
         extracted["manufacturer"] = inferred_mfr
     extracted["category"] = _infer_category(text)
 
@@ -550,6 +613,167 @@ def _extract_with_regex(text: str) -> dict:
     return extracted
 
 
+def _extract_with_regex(text: str) -> dict:
+    extracted: dict[str, Any] = {}
+    lines = text.split("\n")
+
+    def is_noise_line(value: str) -> bool:
+        lowered = value.strip().lower()
+        if not lowered:
+            return True
+        if re.fullmatch(r"-+\s*(ocr\s*)?page\s+\d+\s*-+", lowered):
+            return True
+        if lowered.startswith(("http", "www", "page ")):
+            return True
+        if lowered in {"technical data sheet", "technical data sheet (tds)", "product data sheet", "data sheet", "tds"}:
+            return True
+        if lowered.startswith(("sample document", "document no", "revision:", "issue date", "property value unit")):
+            return True
+        return False
+
+    def looks_like_product_name(value: str) -> bool:
+        if is_noise_line(value):
+            return False
+        if len(value) < 4 or len(value) > 120:
+            return False
+        if re.search(r"[:=|]", value):
+            return False
+        if re.search(r"\d+\s*(mpa|mm|kg|g/m|%|hours?|minutes?)\b", value, re.IGNORECASE):
+            return False
+        return bool(re.search(r"[A-Za-z]{3,}", value))
+
+    for line in lines[:40]:
+        product_match = re.match(r"^(?:product|product name)\s*[:=-]\s*(.+)$", line.strip(), flags=re.IGNORECASE)
+        if product_match and looks_like_product_name(product_match.group(1)):
+            extracted["product_name"] = product_match.group(1).strip()
+            break
+
+    for line in lines[:40]:
+        manufacturer_match = re.match(r"^(?:manufacturer|company|manufactured by)\s*[:=-]\s*(.+)$", line.strip(), flags=re.IGNORECASE)
+        if manufacturer_match:
+            extracted["manufacturer"] = manufacturer_match.group(1).strip()
+            break
+
+    for line in lines[:15]:
+        line = line.strip()
+        if extracted.get("product_name"):
+            break
+        if looks_like_product_name(line):
+            extracted["product_name"] = line
+            break
+
+    product_name = extracted.get("product_name", "")
+    inferred_mfr = _infer_manufacturer(text, product_name)
+    if inferred_mfr and not extracted.get("manufacturer"):
+        extracted["manufacturer"] = inferred_mfr
+    extracted["category"] = _infer_category(text)
+
+    standards: list[str] = []
+    tech_props: dict[str, dict] = {}
+    working_props: dict[str, dict] = {}
+    working_keywords = (
+        "open time", "pot life", "adjustability", "traffic", "walkable", "curing",
+        "setting time", "water", "mix ratio", "mixing ratio", "coverage",
+        "shelf life", "workability", "application thickness",
+    )
+
+    def add_property(raw_name: str, raw_value: str, unit: str) -> None:
+        key = re.sub(r"[^a-z0-9]+", "_", raw_name.lower()).strip("_")
+        if not key or key in {"property", "value", "test_method", "tolerance"}:
+            return
+        value_text = raw_value.strip().replace("–", "-").replace("â€“", "-")
+        if "-" in value_text:
+            value: Any = re.sub(r"\s+", "", value_text)
+        else:
+            try:
+                cleaned = (
+                    value_text.replace(",", "")
+                    .replace("<=", "")
+                    .replace(">=", "")
+                    .replace("<", "")
+                    .replace(">", "")
+                    .strip()
+                )
+                value = float(cleaned)
+                if value == int(value):
+                    value = int(value)
+            except ValueError:
+                value = value_text
+        prop = {"value": value, "unit": normalize_unit(unit.strip())}
+        if any(word in key.replace("_", " ") for word in working_keywords):
+            working_props[key] = prop
+        else:
+            tech_props[key] = prop
+
+    for line in lines:
+        clean_line = line.strip()
+        for pat in [
+            r"(ISO\s*\d+[\w\-]*)",
+            r"(EN\s*\d+[\w\-]*)",
+            r"(ASTM\s*[A-Z]\d+[\w\-]*)",
+            r"(ANSI\s*[A-Z]?\d+[\w\.\-]*)",
+            r"(IS\s*\d+[\w\-]*)",
+        ]:
+            for match in re.findall(pat, clean_line, re.IGNORECASE):
+                normalized = re.sub(r"\s+", " ", match).strip().upper()
+                if normalized not in standards:
+                    standards.append(normalized)
+
+        numeric_row = re.search(
+            r"\b((?:<=|>=|<|>)?\s*\d[\d.,]*(?:\s*(?:-|to|–)\s*\d[\d.,]*)?)\b\s*(.*)$",
+            clean_line,
+            re.IGNORECASE,
+        )
+        if numeric_row:
+            raw_name = clean_line[: numeric_row.start()].strip(" :-|")
+            if (
+                raw_name
+                and len(raw_name) <= 45
+                and not re.search(r"^(revision|document|issue date|property value|rev|page)\b", raw_name, re.IGNORECASE)
+                and not re.search(r"\b(referencing|designed as|certification|compliance|standard)\b", raw_name, re.IGNORECASE)
+            ):
+                rest = numeric_row.group(2).strip()
+                unit_match = re.match(r"([A-Za-z0-9/%°²³µμ.\-/]+(?:\s*/\s*\d+\s*kg)?)", rest)
+                unit = unit_match.group(1) if unit_match else ""
+                add_property(raw_name, numeric_row.group(1), unit)
+                continue
+
+        row_match = re.match(
+            r"^([A-Za-z][A-Za-z\s/\-()]+?)\s+([<>]=?\s*\d[\d.,]*(?:\s*[-–â€“]\s*\d[\d.,]*)?)\s+(.+)$",
+            clean_line,
+        )
+        if row_match and not re.search(r"^(revision|document|issue date|property value)\b", row_match.group(1), re.IGNORECASE):
+            unit = row_match.group(3).split()[0]
+            if len(unit) <= 16:
+                add_property(row_match.group(1), row_match.group(2), unit)
+                continue
+
+        table_match = re.match(
+            r"^([A-Za-z][A-Za-z\s/\-()]+?)\s+([<>]=?\s*\d[\d.,]*(?:\s*[-–]\s*\d[\d.,]*)?)\s+([A-Za-z/%°²³µμ.\-/]+(?:\s*/\s*\d+\s*kg)?)\b",
+            clean_line,
+        )
+        if table_match and not re.search(r"^(revision|document|issue date)\b", table_match.group(1), re.IGNORECASE):
+            add_property(table_match.group(1), table_match.group(2), table_match.group(3))
+            continue
+
+        kv_match = re.match(
+            r"^([A-Za-z0-9\s\-/().]+?)\s*(?:[:=]|\|)\s*([<>]=?\s*\d[\d.,]*(?:\s*[-–]\s*\d[\d.,]*)?)\s*([A-Za-z/%°²³µμ.\- ]+)?",
+            clean_line,
+        )
+        if kv_match:
+            add_property(kv_match.group(1), kv_match.group(2), kv_match.group(3) or "")
+
+    if standards:
+        extracted["standards_compliance"] = standards
+    if tech_props:
+        extracted["technical_properties"] = tech_props
+    if working_props:
+        extracted["working_properties"] = working_props
+
+    extracted["_extraction_method"] = "regex_fallback"
+    return extracted
+
+
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
@@ -572,16 +796,26 @@ def _field_sources(fields: dict, doc_type: str) -> list[dict]:
     title = fields.get("tds_title") or fields.get("product_name") or "Source document"
     source_type = DOC_PROMPTS.get(doc_type, "Source document")
     base_conf = fields.get("confidence", {})
+    source_document_id = fields.get("_source_document_id", "")
     sources = []
     for field in ["product_name", "manufacturer", "category", "standards_compliance", "technical_properties"]:
         value = fields.get(field)
         if value:
+            confidence = base_conf.get(field, base_conf.get("overall", 0))
             sources.append({
                 "field": field,
+                "field_path": field,
+                "source_document_id": source_document_id,
                 "source_type": source_type,
                 "source_title": title,
-                "citation": fields.get(f"{field}_citation", ""),
-                "confidence": base_conf.get(field, base_conf.get("overall", 0)),
+                "page": fields.get(f"{field}_page", "1"),
+                "section": fields.get(f"{field}_section", ""),
+                "quote": fields.get(f"{field}_quote", ""),
+                "citation": fields.get(f"{field}_citation", "Page 1"),
+                "extraction_method": fields.get("_extraction_method", "ai"),
+                "confidence": confidence,
+                "ai_confidence": confidence,
+                "review_status": "pending",
             })
     return sources
 
@@ -636,6 +870,8 @@ def build_dpp(fields: dict, batch_number: str = "", origin_country: str = "India
     slug = re.sub(r"[^A-Z0-9]", "-", product_name.upper())[:20].strip("-")
     now = datetime.now(timezone.utc)
     passport_id = f"DPP-{slug}-{date.today().year}-{now.strftime('%H%M%S')}"
+    source_document_id = fields.get("_source_document_id") or f"SRC-{slug}-{now.strftime('%H%M%S%f')[:10]}"
+    fields["_source_document_id"] = source_document_id
 
     confidence = fields.get("confidence", {})
 
@@ -690,10 +926,18 @@ def build_dpp(fields: dict, batch_number: str = "", origin_country: str = "India
             "standards_compliance": confidence.get("standards_compliance", 0),
         },
         "source_document": {
+            "source_document_id": source_document_id,
             "type": DOC_PROMPTS.get(doc_type, "Technical Data Sheet"),
             "document_type_code": doc_type,
             "document_title": fields.get("tds_title", f"{product_name} - {DOC_PROMPTS.get(doc_type, 'Technical Data Sheet')}"),
+            "title": fields.get("tds_title", f"{product_name} - {DOC_PROMPTS.get(doc_type, 'Technical Data Sheet')}"),
+            "issuer": fields.get("issuer", fields.get("manufacturer", "")),
             "revision": fields.get("tds_revision", ""),
+            "issue_date": fields.get("tds_date", ""),
+            "expiry_date": fields.get("expiry_date", ""),
+            "file_name": fields.get("_source_file_name", ""),
+            "rights_status": fields.get("rights_status", "internal_review"),
+            "review_status": "pending",
             "date_issued": fields.get("tds_date", ""),
             "conversion_method": fields.get("_extraction_method", "manual"),
             "converted_by": fields.get("converted_by", "DPP Forge"),
@@ -718,6 +962,12 @@ def build_dpp(fields: dict, batch_number: str = "", origin_country: str = "India
         "method": fields.get("_extraction_method", "manual"),
         "timestamp": now.isoformat(),
     }]
+    additional_info = fields.get("additional_info", {}) if isinstance(fields.get("additional_info", {}), dict) else {}
+    for section in ["identifiers", "manufacturing", "supply_chain", "health_safety", "lifecycle"]:
+        if section in fields:
+            dpp[section] = fields[section]
+        elif section in additional_info:
+            dpp[section] = additional_info[section]
     return dpp
 
 
@@ -756,6 +1006,42 @@ class SaveInput(BaseModel):
     qr_type: str = "dpp_forge"
 
 
+class ApprovalInput(BaseModel):
+    dpp_json: dict
+    reviewer: str
+    reviewed_confidence: float = Field(ge=0, le=100)
+    rights_status: str
+    notes: str = ""
+
+
+APPROVABLE_RIGHTS = {"manufacturer_authorized", "public_document", "licensed_reuse", "authority_approved"}
+
+
+def publication_issues(dpp: dict, payload: ApprovalInput | None = None) -> list[str]:
+    issues = []
+    if not dpp.get("product_name") or not dpp.get("manufacturer"):
+        issues.append("Product identity must include product name and manufacturer.")
+    evidence = dpp.get("evidence", {})
+    field_sources = evidence.get("field_sources", []) if isinstance(evidence, dict) else []
+    cited_fields = {src.get("field") or src.get("field_path") for src in field_sources if src.get("citation") or src.get("quote")}
+    for field in ["product_name", "manufacturer"]:
+        if field not in cited_fields:
+            issues.append(f"Required field citations missing for {field}.")
+    conflicts = dpp.get("conflicts", [])
+    critical_conflicts = [c for c in conflicts if c.get("severity", "critical") == "critical" and c.get("status") != "resolved"] if isinstance(conflicts, list) else []
+    if critical_conflicts:
+        issues.append("Critical conflicts must be resolved before approval.")
+    rights_status = payload.rights_status if payload else dpp.get("data_rights", {}).get("permission_status", "")
+    if rights_status not in APPROVABLE_RIGHTS:
+        issues.append("Rights status must permit publication.")
+    reviewed_confidence = payload.reviewed_confidence if payload else dpp.get("review", {}).get("reviewed_confidence", 0)
+    if reviewed_confidence < MINIMUM_SAVE_CONFIDENCE:
+        issues.append(f"Reviewed confidence must be at least {MINIMUM_SAVE_CONFIDENCE}%.")
+    if payload and not payload.reviewer.strip():
+        issues.append("Reviewer is required.")
+    return issues
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -777,6 +1063,37 @@ def manual_convert(payload: ManualInput):
     }
 
 
+@router.post("/approve")
+def approve_dpp(payload: ApprovalInput):
+    issues = publication_issues(payload.dpp_json, payload)
+    if issues:
+        raise HTTPException(status_code=422, detail={"message": "Approval requirements not met", "issues": issues})
+
+    dpp = deepcopy(payload.dpp_json)
+    reviewed_at = datetime.now(timezone.utc).isoformat()
+    dpp.setdefault("data_rights", {})
+    dpp["data_rights"]["permission_status"] = payload.rights_status
+    dpp["review"] = {
+        "status": "approved",
+        "reviewer": payload.reviewer.strip(),
+        "reviewed_confidence": payload.reviewed_confidence,
+        "reviewed_at": reviewed_at,
+        "notes": payload.notes,
+    }
+    for source in dpp.get("evidence", {}).get("field_sources", []):
+        source.setdefault("ai_confidence", source.get("confidence", 0))
+        source["review_status"] = "reviewed"
+        source["reviewer"] = payload.reviewer.strip()
+        source["reviewed_at"] = reviewed_at
+    dpp.setdefault("audit_trail", []).append({
+        "event": "human_review_approved",
+        "actor": payload.reviewer.strip(),
+        "method": "server_approval",
+        "timestamp": reviewed_at,
+    })
+    return {"status": "approved", "dpp_json": dpp}
+
+
 @router.post("/upload", response_model=None)
 @limiter.limit("10/minute")
 async def upload_extract(
@@ -784,13 +1101,13 @@ async def upload_extract(
     file: UploadFile = File(...),
     doc_type: str = "tds",
 ):
-    """Upload PDF (TDS/EPD/DoP/Test Report), extract text, AI-map fields, return DPP JSON for review."""
+    """Upload PDF evidence, extract text, classify document, and return one or more DPP drafts for review."""
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
     if file.size and file.size > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large (max 10MB)")
     if doc_type not in DOC_PROMPTS:
-        doc_type = "tds"
+        doc_type = "auto"
 
     pdf_bytes = await file.read()
     raw_text = extract_text_from_pdf(pdf_bytes)
@@ -801,25 +1118,42 @@ async def upload_extract(
             detail="Could not extract enough text from PDF. It may be a scanned image.",
         )
 
-    extracted = ai_extract_fields(raw_text, doc_type)
-    method = extracted.pop("_extraction_method", "ai")
-    error = extracted.pop("_extraction_error", None)
-    if error:
-        raise HTTPException(status_code=503, detail=_retryable_ai_error(error))
-    extracted["_extraction_method"] = method
+    classification = classify_document(raw_text, doc_type)
+    detected_doc_type = classification["document_type"]
+    extracted_drafts = ai_extract_product_drafts(raw_text, detected_doc_type)
 
-    dpp = build_dpp(extracted, extracted.get("batch_number", ""), extracted.get("origin_country", "India"), doc_type)
-    warnings = validate_dpp(dpp)
-    if error:
-        warnings.append(error)
+    drafts = []
+    warnings = []
+    method = "ai"
+    for index, extracted in enumerate(extracted_drafts, start=1):
+        method = extracted.pop("_extraction_method", method)
+        error = extracted.pop("_extraction_error", None)
+        if error:
+            raise HTTPException(status_code=503, detail=_retryable_ai_error(error))
+        extracted["_extraction_method"] = method
+        extracted["_source_file_name"] = file.filename
+        extracted["_source_document_id"] = f"SRC-{date.today().strftime('%Y%m%d')}-{index}"
+        dpp = build_dpp(extracted, extracted.get("batch_number", ""), extracted.get("origin_country", "India"), detected_doc_type)
+        dpp["_source_file_name"] = file.filename
+        drafts.append(dpp)
+        warnings.extend(validate_dpp(dpp))
+
+    if not drafts:
+        raise HTTPException(status_code=422, detail="No product drafts could be extracted from this document.")
+
+    dpp = drafts[0]
 
     return {
         "status": "review_required",
         "conversion_method": method,
-        "document_type": doc_type,
+        "document_type": detected_doc_type,
+        "detected_document_type": detected_doc_type,
+        "document_classification": classification,
+        "product_count": len(drafts),
+        "drafts": drafts,
         "raw_text_preview": raw_text[:2000],
         "raw_text_length": len(raw_text),
-        "warnings": warnings,
+        "warnings": sorted(set(warnings)),
         "extracted_dpp": dpp,
         "source_file_name": file.filename,
     }
@@ -942,12 +1276,19 @@ def save_dpp(request: Request, payload: SaveInput, db: Session = Depends(get_db)
     carbon = sustainability.get("carbon_footprint", {})
 
     confidence = dpp.get("confidence", {})
-    overall_confidence = float(confidence.get("overall", 0) or 0)
+    ai_confidence = float(confidence.get("overall", 0) or 0)
+    review = dpp.get("review", {})
+    reviewed_confidence = float(review.get("reviewed_confidence", 0) or 0) if review.get("status") == "approved" else 0
+    overall_confidence = reviewed_confidence or ai_confidence
     if overall_confidence < MINIMUM_SAVE_CONFIDENCE:
         raise HTTPException(
             status_code=422,
             detail=f"Overall confidence must be at least {MINIMUM_SAVE_CONFIDENCE}% before saving. Current: {overall_confidence:.0f}%.",
         )
+    if review.get("status") == "approved":
+        issues = publication_issues(dpp)
+        if issues:
+            raise HTTPException(status_code=422, detail={"message": "Approval requirements not met", "issues": issues})
     dpp = _ensure_quality_metadata(
         dpp,
         dpp.get("source_document", {}).get("conversion_method", "manual"),
