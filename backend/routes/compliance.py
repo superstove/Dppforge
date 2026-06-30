@@ -343,6 +343,61 @@ def _check_field(dpp: dict, field_key: str) -> dict:
     return result
 
 
+@router.get("/overview")
+def compliance_overview(db: Session = Depends(get_db)):
+    records = db.query(DPPRecord).all()
+    if not records:
+        return {"total": 0, "green": 0, "amber": 0, "red": 0, "avg_score": 0, "items": []}
+
+    items = []
+    green = amber = red = 0
+    total_score = 0
+
+    for record in records:
+        dpp = json.loads(record.dpp_json)
+        category = (dpp.get("category", "") or "").lower()
+
+        fields_to_check = dict(ESPR_MANDATORY_FIELDS)
+        if any(c in category for c in CPR_CATEGORIES):
+            fields_to_check.update(CPR_ADDITIONAL_FIELDS)
+
+        results = [_check_field(dpp, key) for key in fields_to_check]
+        pass_count = sum(1 for r in results if r["status"] == "pass")
+        warn_count = sum(1 for r in results if r["status"] == "warning")
+        total = len(results)
+        score = round(((pass_count + warn_count * 0.5) / total) * 100) if total else 0
+
+        if score >= 80:
+            grade = "green"
+            green += 1
+        elif score >= 50:
+            grade = "amber"
+            amber += 1
+        else:
+            grade = "red"
+            red += 1
+
+        total_score += score
+        items.append({
+            "id": record.id,
+            "passport_id": record.passport_id,
+            "product_name": dpp.get("product_name", ""),
+            "manufacturer": dpp.get("manufacturer", ""),
+            "category": dpp.get("category", ""),
+            "compliance_score": score,
+            "grade": grade,
+        })
+
+    return {
+        "total": len(records),
+        "green": green,
+        "amber": amber,
+        "red": red,
+        "avg_score": round(total_score / len(records)),
+        "items": sorted(items, key=lambda x: x["compliance_score"]),
+    }
+
+
 # ---------------------------------------------------------------------------
 # 1. ESPR Compliance Engine
 # ---------------------------------------------------------------------------
@@ -405,61 +460,6 @@ def check_compliance(record_id: int, db: Session = Depends(get_db)):
             if is_cpr_product
             else ["ESPR (EU 2024/1781)"]
         ),
-    }
-
-
-@router.get("/overview")
-def compliance_overview(db: Session = Depends(get_db)):
-    records = db.query(DPPRecord).all()
-    if not records:
-        return {"total": 0, "green": 0, "amber": 0, "red": 0, "avg_score": 0, "items": []}
-
-    items = []
-    green = amber = red = 0
-    total_score = 0
-
-    for record in records:
-        dpp = json.loads(record.dpp_json)
-        category = (dpp.get("category", "") or "").lower()
-
-        fields_to_check = dict(ESPR_MANDATORY_FIELDS)
-        if any(c in category for c in CPR_CATEGORIES):
-            fields_to_check.update(CPR_ADDITIONAL_FIELDS)
-
-        results = [_check_field(dpp, key) for key in fields_to_check]
-        pass_count = sum(1 for r in results if r["status"] == "pass")
-        warn_count = sum(1 for r in results if r["status"] == "warning")
-        total = len(results)
-        score = round(((pass_count + warn_count * 0.5) / total) * 100) if total else 0
-
-        if score >= 80:
-            grade = "green"
-            green += 1
-        elif score >= 50:
-            grade = "amber"
-            amber += 1
-        else:
-            grade = "red"
-            red += 1
-
-        total_score += score
-        items.append({
-            "id": record.id,
-            "passport_id": record.passport_id,
-            "product_name": dpp.get("product_name", ""),
-            "manufacturer": dpp.get("manufacturer", ""),
-            "category": dpp.get("category", ""),
-            "compliance_score": score,
-            "grade": grade,
-        })
-
-    return {
-        "total": len(records),
-        "green": green,
-        "amber": amber,
-        "red": red,
-        "avg_score": round(total_score / len(records)),
-        "items": sorted(items, key=lambda x: x["compliance_score"]),
     }
 
 
