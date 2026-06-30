@@ -387,6 +387,9 @@ def test_regex_fallback_extracts_labeled_tds_identity_and_table_rows():
     assert "EN 12004" in extracted["standards_compliance"]
     assert "ISO 13007" in extracted["standards_compliance"]
     assert "IS 15477" in extracted["standards_compliance"]
+    assert extracted["confidence"]["overall"] >= 90
+    assert extracted["confidence"]["product_name"] >= 90
+    assert extracted["confidence"]["manufacturer"] >= 90
 
 
 def test_gemini_friendly_error_includes_actionable_details():

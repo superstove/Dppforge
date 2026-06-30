@@ -609,6 +609,15 @@ def _extract_with_regex(text: str) -> dict:
     if working_props:
         extracted["working_properties"] = working_props
 
+    confidence = {
+        "product_name": 95 if extracted.get("product_name") else 0,
+        "manufacturer": 95 if extracted.get("manufacturer") else 0,
+        "technical_properties": 92 if len(tech_props) >= 3 else 75 if tech_props else 0,
+        "standards_compliance": 92 if standards else 0,
+    }
+    populated_scores = [score for score in confidence.values() if score > 0]
+    confidence["overall"] = round(sum(populated_scores) / len(populated_scores)) if populated_scores else 0
+    extracted["confidence"] = confidence
     extracted["_extraction_method"] = "regex_fallback"
     return extracted
 
@@ -770,6 +779,15 @@ def _extract_with_regex(text: str) -> dict:
     if working_props:
         extracted["working_properties"] = working_props
 
+    confidence = {
+        "product_name": 95 if extracted.get("product_name") else 0,
+        "manufacturer": 95 if extracted.get("manufacturer") else 0,
+        "technical_properties": 92 if len(tech_props) >= 3 else 75 if tech_props else 0,
+        "standards_compliance": 92 if standards else 0,
+    }
+    populated_scores = [score for score in confidence.values() if score > 0]
+    confidence["overall"] = round(sum(populated_scores) / len(populated_scores)) if populated_scores else 0
+    extracted["confidence"] = confidence
     extracted["_extraction_method"] = "regex_fallback"
     return extracted
 
