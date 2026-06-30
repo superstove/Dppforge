@@ -436,11 +436,21 @@ export function PassportsView() {
 
                 <div className="flex-1 overflow-y-auto p-5 sm:p-8 flex flex-col lg:flex-row gap-6 sm:gap-8 bg-[#1a1d27]">
                   <div className="lg:w-1/3 space-y-6">
-                    <div className="bg-[#0f1117] p-5 sm:p-8 rounded-2xl border border-[#2e3245] text-center shadow-inner">
-                      <div className="bg-white p-3 rounded-2xl inline-block mb-4 shadow-lg">
-                        <img src={resolveAssetUrl(detailData.qr_code_url)} className="w-40 h-40" alt="QR Code" />
-                      </div>
-                      <p className="text-xs font-bold text-white uppercase tracking-wider">ConstructAsk Verify</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
+                      <QrPanel
+                        title="DPP QR"
+                        subtitle="Opens the DPP Forge public passport"
+                        imageUrl={detailData.qr_code_url}
+                        linkUrl={detailData.qr_code_url}
+                        alt="DPP QR Code"
+                      />
+                      <QrPanel
+                        title="ConstructAsk QR"
+                        subtitle="Redirects to ConstructAsk verification"
+                        imageUrl={detailData.constructask_qr_code_url}
+                        linkUrl={detailData.constructask_qr_code_url}
+                        alt="ConstructAsk QR Code"
+                      />
                     </div>
 
                     <div className="space-y-4 bg-[#242736]/50 p-5 sm:p-6 rounded-2xl border border-[#2e3245]">
@@ -717,6 +727,44 @@ function DetailRow({ label, value, mono = false, capitalize = false }: { label: 
     <div className="flex justify-between items-center border-b border-[#2e3245] pb-3 last:border-0 last:pb-0">
       <span className="text-[#8b8fa3] text-sm font-medium">{label}</span>
       <span className={`text-white text-sm text-right ${mono ? 'font-mono bg-[#0f1117] px-2 py-0.5 rounded border border-[#2e3245] text-xs' : 'font-semibold'} ${capitalize ? 'capitalize' : ''}`}>{value || 'N/A'}</span>
+    </div>
+  );
+}
+
+function QrPanel({
+  title,
+  subtitle,
+  imageUrl,
+  linkUrl,
+  alt,
+}: {
+  title: string;
+  subtitle: string;
+  imageUrl?: string | null;
+  linkUrl?: string | null;
+  alt: string;
+}) {
+  const resolvedImage = resolveAssetUrl(imageUrl);
+  const resolvedLink = resolveAssetUrl(linkUrl);
+
+  return (
+    <div className="bg-[#0f1117] p-5 rounded-2xl border border-[#2e3245] text-center shadow-inner">
+      {resolvedImage ? (
+        <a href={resolvedLink || resolvedImage} target="_blank" rel="noreferrer" className="bg-white p-3 rounded-2xl inline-block mb-4 shadow-lg hover:ring-2 hover:ring-white/30 transition-all">
+          <img src={resolvedImage} className="w-36 h-36 sm:w-40 sm:h-40" alt={alt} />
+        </a>
+      ) : (
+        <div className="w-40 h-40 mx-auto mb-4 rounded-2xl border border-dashed border-[#2e3245] bg-[#1a1d27] flex items-center justify-center text-xs text-[#63677a]">
+          Not generated
+        </div>
+      )}
+      <p className="text-xs font-bold text-white uppercase tracking-wider">{title}</p>
+      <p className="text-[11px] text-[#8b8fa3] mt-1">{subtitle}</p>
+      {resolvedLink && (
+        <a href={resolvedLink} target="_blank" rel="noreferrer" className="mt-3 inline-flex text-[11px] font-semibold text-blue-300 hover:text-blue-200 underline underline-offset-4">
+          Open QR image
+        </a>
+      )}
     </div>
   );
 }

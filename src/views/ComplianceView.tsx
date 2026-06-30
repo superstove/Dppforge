@@ -33,6 +33,7 @@ export function ComplianceView() {
   const [registryData, setRegistryData] = useState<Record<string, unknown> | null>(null);
   const [rulebook, setRulebook] = useState<ComplianceRulebook | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [expandedField, setExpandedField] = useState<string | null>(null);
 
@@ -43,12 +44,73 @@ export function ComplianceView() {
 
   const loadOverview = async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const [data, rules] = await Promise.all([api.complianceOverview(), api.complianceRulebook()]);
-      setOverview(data);
+      let resolvedOverview = data;
+
+      if (data.total === 0) {
+        resolvedOverview = await buildOverviewFromSavedPassports();
+      }
+
+      setOverview(resolvedOverview);
       setRulebook(rules);
-    } catch { /* ignore */ }
+    } catch (err) {
+      try {
+        setOverview(await buildOverviewFromSavedPassports());
+        setRulebook(await api.complianceRulebook().catch(() => null));
+      } catch {
+        setOverview(null);
+        setLoadError(err instanceof Error ? err.message : 'Could not load compliance data.');
+      }
+    }
     setLoading(false);
+  };
+
+  const buildOverviewFromSavedPassports = async (): Promise<ComplianceOverview> => {
+    const saved = await api.getPassports(100, 0);
+    if (saved.total === 0) {
+      return { total: 0, green: 0, amber: 0, red: 0, avg_score: 0, items: [] };
+    }
+
+    const checked = await Promise.all(saved.items.map(async passport => {
+      try {
+        const result = await api.checkCompliance(passport.id);
+        return {
+          id: passport.id,
+          passport_id: passport.passport_id,
+          product_name: result.product_name || passport.product_name,
+          manufacturer: passport.manufacturer,
+          category: result.category || passport.category,
+          compliance_score: result.compliance_score,
+          grade: result.grade,
+        };
+      } catch {
+        return {
+          id: passport.id,
+          passport_id: passport.passport_id,
+          product_name: passport.product_name,
+          manufacturer: passport.manufacturer,
+          category: passport.category,
+          compliance_score: 0,
+          grade: 'red' as const,
+        };
+      }
+    }));
+
+    const green = checked.filter(item => item.grade === 'green').length;
+    const amber = checked.filter(item => item.grade === 'amber').length;
+    const red = checked.filter(item => item.grade === 'red').length;
+    const avg_score = Math.round(checked.reduce((sum, item) => sum + item.compliance_score, 0) / checked.length);
+
+    return {
+      total: checked.length,
+      green,
+      amber,
+      red,
+      avg_score,
+      items: checked.sort((a, b) => a.compliance_score - b.compliance_score),
+    };
   };
 
   const loadDetail = async (id: number) => {
@@ -131,6 +193,12 @@ export function ComplianceView() {
         <>
           {loading ? (
             <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-[#8b8fa3]" /></div>
+          ) : loadError ? (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-6 text-red-200">
+              <p className="font-semibold">Compliance data could not be loaded</p>
+              <p className="text-sm mt-1 text-red-200/80">{loadError}</p>
+              <button onClick={loadOverview} className="mt-4 bg-white text-black px-5 py-2 rounded-full text-sm font-bold hover:bg-gray-200 transition-colors">Retry</button>
+            </div>
           ) : overview && overview.total > 0 ? (
             <>
               {/* Summary cards */}

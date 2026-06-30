@@ -19,9 +19,9 @@ export function Sidebar({
 }) {
   const navItems = [
     { id: 'home', path: '/', label: 'Home', icon: Home },
-    { id: 'dashboard', path: '/dashboard', label: 'Dashboard', icon: BarChart3 },
-    { id: 'manual', path: '/manual', label: 'Manual Entry', icon: Plus },
     { id: 'upload', path: '/upload', label: 'Upload PDF', icon: LayoutDashboard },
+    { id: 'manual', path: '/manual', label: 'Manual Entry', icon: Plus },
+    { id: 'dashboard', path: '/dashboard', label: 'Dashboard', icon: BarChart3 },
     { id: 'passports', path: '/passports', label: 'Saved Passports', icon: Database },
     { id: 'manufacturers', path: '/manufacturers', label: 'Manufacturers', icon: Factory },
     { id: 'market', path: '/market', label: 'Market Coverage', icon: Globe },

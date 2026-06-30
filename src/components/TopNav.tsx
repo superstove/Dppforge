@@ -11,9 +11,9 @@ const OPERATOR_ROLES: { id: OperatorRole; label: string; color: string; desc: st
 
 const NAV_ITEMS = [
   { id: 'home', path: '/', label: 'Home', icon: Home },
-  { id: 'dashboard', path: '/dashboard', label: 'Dashboard', icon: BarChart3 },
-  { id: 'manual', path: '/manual', label: 'Entry', icon: Plus },
   { id: 'upload', path: '/upload', label: 'Upload', icon: LayoutDashboard },
+  { id: 'manual', path: '/manual', label: 'Entry', icon: Plus },
+  { id: 'dashboard', path: '/dashboard', label: 'Dashboard', icon: BarChart3 },
   { id: 'passports', path: '/passports', label: 'Passports', icon: Database },
   { id: 'manufacturers', path: '/manufacturers', label: 'Manufacturers', icon: Factory },
   { id: 'market', path: '/market', label: 'Market', icon: Globe },
