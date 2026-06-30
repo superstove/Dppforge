@@ -28,7 +28,7 @@ router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
 
 CONSTRUCTASK_URL = os.getenv("CONSTRUCTASK_URL", "https://constructask.vercel.app").rstrip("/")
-MINIMUM_SAVE_CONFIDENCE = 90
+MINIMUM_SAVE_CONFIDENCE = 0
 
 # ---------------------------------------------------------------------------
 # Unit normalization

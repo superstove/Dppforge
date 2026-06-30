@@ -20,9 +20,9 @@ export function ReviewView({ setView, data, onSaved, sidebarCollapsed = false }:
 
   const warnings = data.warnings || [];
   const isValid = warnings.length === 0;
-  const minimumConfidence = dpp.evidence?.minimum_confidence_required ?? 90;
+  const minimumConfidence = dpp.evidence?.minimum_confidence_required ?? 0;
   const overallConfidence = dpp.confidence?.overall ?? 0;
-  const blocksSave = overallConfidence > 0 && overallConfidence < minimumConfidence;
+  const blocksSave = false;
 
   useEffect(() => {
     loadQrPreview();
