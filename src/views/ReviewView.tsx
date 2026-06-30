@@ -1,6 +1,7 @@
 import { useState, useEffect, ChangeEvent } from 'react';
-import { ArrowLeft, AlertTriangle, CheckCircle, Download, Check, FileJson, QrCode, Loader2, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, CheckCircle, Download, Check, FileJson, QrCode, Loader2, Plus, Trash2, ShieldAlert } from 'lucide-react';
 import { api } from '../api';
+import { useRole } from '../RoleContext';
 import { Input } from '../components/Input';
 import type { ConversionResult, SaveResult, DppJson, TechnicalProperty } from '../types';
 
@@ -12,6 +13,7 @@ interface ReviewViewProps {
 }
 
 export function ReviewView({ setView, data, onSaved, sidebarCollapsed = false }: ReviewViewProps) {
+  const { canApprove, role } = useRole();
   const [dpp, setDpp] = useState<DppJson>(data.extracted_dpp);
   const [loading, setLoading] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
@@ -136,6 +138,23 @@ export function ReviewView({ setView, data, onSaved, sidebarCollapsed = false }:
       onSaved(res);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save DPP');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    if (!dpp.product_name?.trim() || !dpp.manufacturer?.trim()) {
+      setError('Product name and manufacturer are required.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.saveDpp(dpp);
+      onSaved(res);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to save draft');
     } finally {
       setLoading(false);
     }
@@ -504,14 +523,26 @@ export function ReviewView({ setView, data, onSaved, sidebarCollapsed = false }:
             >
               <QrCode className="w-4 h-4 mr-2" /> ConstructAsk QR
             </button>
-            <button
-              onClick={handleApprove}
-              disabled={loading}
-              className="col-span-2 sm:col-span-1 justify-center flex items-center bg-white text-black px-5 sm:px-8 py-3 rounded-full font-bold hover:bg-gray-200 transition-all disabled:opacity-50 shadow-[0_0_20px_rgba(255,255,255,0.2)] text-sm sm:text-base"
-            >
-              {loading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Check className="w-5 h-5 mr-2" />}
-              {loading ? 'Generating...' : 'Approve & Generate QR'}
-            </button>
+            {canApprove ? (
+              <button
+                onClick={handleApprove}
+                disabled={loading}
+                className="col-span-2 sm:col-span-1 justify-center flex items-center bg-white text-black px-5 sm:px-8 py-3 rounded-full font-bold hover:bg-gray-200 transition-all disabled:opacity-50 shadow-[0_0_20px_rgba(255,255,255,0.2)] text-sm sm:text-base"
+              >
+                {loading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Check className="w-5 h-5 mr-2" />}
+                {loading ? 'Generating...' : 'Approve & Generate QR'}
+              </button>
+            ) : (
+              <button
+                onClick={handleSaveDraft}
+                disabled={loading}
+                className="col-span-2 sm:col-span-1 justify-center flex items-center bg-white text-black px-5 sm:px-8 py-3 rounded-full font-bold hover:bg-gray-200 transition-all disabled:opacity-50 shadow-[0_0_20px_rgba(255,255,255,0.2)] text-sm sm:text-base"
+                title="Switch to Reviewer role to approve and generate QR"
+              >
+                {loading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Check className="w-5 h-5 mr-2" />}
+                {loading ? 'Saving...' : 'Save Draft (Approval requires Reviewer role)'}
+              </button>
+            )}
           </div>
         </div>
       </div>

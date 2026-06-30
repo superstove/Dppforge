@@ -1,6 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Home, Plus, Database, Settings, LayoutDashboard, BarChart3, Factory, Globe, BookOpen, Shield, Bell, Columns3, HardHat, Menu } from 'lucide-react';
+import { Home, Plus, Database, Settings, LayoutDashboard, BarChart3, Factory, Globe, BookOpen, Shield, Bell, Columns3, HardHat, Menu, User } from 'lucide-react';
+import { useRole, type OperatorRole } from '../RoleContext';
+
+const OPERATOR_ROLES: { id: OperatorRole; label: string; color: string; desc: string }[] = [
+  { id: 'engineer', label: 'Product Passport Engineer', color: 'text-blue-400', desc: 'Create & edit passports, attach source docs, manage QA records' },
+  { id: 'reviewer', label: 'Reviewer / Approver', color: 'text-green-400', desc: 'Approve DPPs for publication, review manufacturer claims' },
+  { id: 'admin', label: 'Admin', color: 'text-purple-400', desc: 'Full access — delete passports, manage settings, all actions' },
+];
 
 const NAV_ITEMS = [
   { id: 'home', path: '/', label: 'Home', icon: Home },
@@ -26,6 +33,9 @@ export function TopNav({
   sidebarCollapsed?: boolean;
 }) {
   const location = useLocation();
+  const { role, setRole } = useRole();
+  const [showRoleMenu, setShowRoleMenu] = useState(false);
+  const currentRole = OPERATOR_ROLES.find(r => r.id === role) || OPERATOR_ROLES[0];
 
   const activeIdx = NAV_ITEMS.findIndex(item => {
     if (item.path === '/') return location.pathname === '/';
@@ -45,19 +55,42 @@ export function TopNav({
         >
           <Menu className="w-5 h-5" />
         </button>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-1">
           <div className="w-7 h-7 bg-white text-black font-bold flex items-center justify-center rounded-sm">
             <HardHat className="w-4 h-4" />
           </div>
           <span className="font-bold text-sm tracking-wider text-white">DPP FORGE</span>
         </div>
+        <button onClick={() => setShowRoleMenu(!showRoleMenu)} className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium bg-[#1a1d27] border border-[#2e3245] ${currentRole.color}`}>
+          <User className="w-3 h-3" />
+        </button>
       </div>
+
+      {/* Role dropdown (shared mobile + desktop) */}
+      {showRoleMenu && (
+        <div className="fixed inset-0 z-50" onClick={() => setShowRoleMenu(false)}>
+          <div className="absolute right-4 top-14 w-72 bg-[#1a1d27] border border-[#2e3245] rounded-xl shadow-2xl z-50 py-1" onClick={e => e.stopPropagation()}>
+            <div className="px-4 py-2 border-b border-[#2e3245]">
+              <p className="text-xs font-semibold text-white">Operator Role</p>
+              <p className="text-[10px] text-[#63677a] mt-0.5">Controls which actions are available</p>
+            </div>
+            {OPERATOR_ROLES.map(r => (
+              <button key={r.id} onClick={() => { setRole(r.id); setShowRoleMenu(false); }} className={`w-full text-left px-4 py-3 hover:bg-[#242736] transition-colors ${r.id === role ? 'bg-[#242736]' : ''}`}>
+                <div className={`text-xs font-semibold ${r.id === role ? r.color : 'text-[#c0c4d6]'}`}>
+                  {r.id === role && '● '}{r.label}
+                </div>
+                <div className="text-[10px] text-[#63677a] mt-0.5">{r.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Desktop */}
       <div className="hidden md:flex items-center w-full px-4 py-2">
         {/* When sidebar is visible: show page title breadcrumb */}
         {!sidebarCollapsed && (
-          <div className="flex items-center gap-3 w-full">
+          <div className="flex items-center justify-between gap-3 w-full">
             <div className="flex items-center gap-2 text-xs text-[#63677a] uppercase tracking-[0.15em] font-semibold">
               <span>DPP FORGE</span>
               {activeItem && (
@@ -70,6 +103,10 @@ export function TopNav({
                 </>
               )}
             </div>
+            <button onClick={() => setShowRoleMenu(!showRoleMenu)} className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-[#1a1d27] border border-[#2e3245] ${currentRole.color} hover:bg-[#242736] transition-colors`}>
+              <User className="w-3 h-3" />
+              <span className="hidden lg:inline">{currentRole.label}</span>
+            </button>
           </div>
         )}
 
@@ -115,6 +152,11 @@ export function TopNav({
                 );
               })}
             </nav>
+
+            <button onClick={() => setShowRoleMenu(!showRoleMenu)} className={`ml-1 flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium bg-[#1a1d27] border border-[#2e3245] ${currentRole.color} hover:bg-[#242736] transition-colors flex-shrink-0`}>
+              <User className="w-3 h-3" />
+              <span className="hidden xl:inline">{currentRole.label}</span>
+            </button>
 
             <button
               onClick={onOpenSidebar}

@@ -105,6 +105,14 @@ export interface DppJson {
   supply_chain?: Record<string, unknown>;
   health_safety?: Record<string, unknown>;
   lifecycle?: Record<string, unknown>;
+  source_documents?: {
+    document_type: string;
+    title: string;
+    issuer: string;
+    file_name: string;
+    rights_status: string;
+    review_status: string;
+  }[];
   audit_trail?: {
     event: string;
     actor: string;

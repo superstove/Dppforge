@@ -1,6 +1,7 @@
 import { useState, useRef, type DragEvent, type ChangeEvent } from 'react';
-import { ArrowLeft, Loader2, FileUp, Files, X, Check, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Loader2, FileUp, Files, X, Check, AlertCircle, ShieldAlert } from 'lucide-react';
 import { api } from '../api';
+import { useRole } from '../RoleContext';
 import type { ConversionResult } from '../types';
 
 interface UploadViewProps {
@@ -27,6 +28,7 @@ const DOC_TYPES = [
 type BatchResult = { file: string; status: string; detail?: string; extracted_dpp?: Record<string, unknown>; warnings?: string[] };
 
 export function UploadView({ setView, onReview }: UploadViewProps) {
+  const { canCreate } = useRole();
   const [files, setFiles] = useState<File[]>([]);
   const [docType, setDocType] = useState('auto');
   const [loading, setLoading] = useState(false);
@@ -237,13 +239,20 @@ export function UploadView({ setView, onReview }: UploadViewProps) {
       )}
 
       <div className="flex justify-stretch sm:justify-end pb-8">
-        <button
-          onClick={handleUpload}
-          disabled={files.length === 0 || loading}
-          className="w-full sm:w-auto bg-white text-black px-10 py-4 rounded-full font-bold text-base sm:text-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-xl"
-        >
-          {files.length > 1 ? `Extract ${files.length} Files` : 'Extract Data'}
-        </button>
+        {canCreate ? (
+          <button
+            onClick={handleUpload}
+            disabled={files.length === 0 || loading}
+            className="w-full sm:w-auto bg-white text-black px-10 py-4 rounded-full font-bold text-base sm:text-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-xl"
+          >
+            {files.length > 1 ? `Extract ${files.length} Files` : 'Extract Data'}
+          </button>
+        ) : (
+          <div className="flex items-center gap-2 text-[#63677a] text-sm">
+            <ShieldAlert className="w-5 h-5" />
+            <span>Switch to Engineer or Admin role to create new passports</span>
+          </div>
+        )}
       </div>
     </div>
   );

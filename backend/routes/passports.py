@@ -8,6 +8,7 @@ import json
 import os
 import re
 from datetime import date, datetime, timezone
+from html import escape as html_escape
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
 from fastapi.responses import Response, StreamingResponse
@@ -16,7 +17,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, defer
 
 from database import get_db
-from models import DPPRecord, QualityRecord
+from models import DPPRecord, DPPRevision, QualityRecord, SourceDocument
 from url_utils import dpp_verification_url
 from utils import generate_qr_bytes
 
@@ -408,18 +409,26 @@ def create_quality_record(record_id: int, payload: QualityRecordInput, db: Sessi
     if not record:
         raise HTTPException(status_code=404, detail="Passport not found")
 
+    def _clean(val: str, max_len: int = 500) -> str:
+        return re.sub(r"<[^>]*>", "", val).replace("\x00", "").strip()[:max_len]
+
+    allowed_statuses = {"pending", "passed", "failed", "quarantined"}
+    allowed_dispositions = {"", "release", "hold", "reject", "rework"}
+    status = payload.status if payload.status in allowed_statuses else "pending"
+    disposition = payload.disposition if payload.disposition in allowed_dispositions else ""
+
     quality = QualityRecord(
         dpp_record_id=record_id,
-        batch_number=payload.batch_number,
-        lot_number=payload.lot_number,
-        serial_number=payload.serial_number,
-        status=payload.status,
-        tested_by=payload.tested_by,
-        test_date=payload.test_date,
-        results_json=json.dumps(payload.results),
-        attachments_json=json.dumps(payload.attachments),
-        notes=payload.notes,
-        disposition=payload.disposition,
+        batch_number=_clean(payload.batch_number, 100),
+        lot_number=_clean(payload.lot_number, 100),
+        serial_number=_clean(payload.serial_number, 100),
+        status=status,
+        tested_by=_clean(payload.tested_by, 200),
+        test_date=_clean(payload.test_date, 20),
+        results_json=json.dumps(payload.results[:50]),
+        attachments_json=json.dumps(payload.attachments[:20]),
+        notes=_clean(payload.notes, 2000),
+        disposition=disposition,
     )
     db.add(quality)
     db.commit()
@@ -439,6 +448,123 @@ def list_quality_records(record_id: int, db: Session = Depends(get_db)):
         .all()
     )
     return {"items": [_serialize_quality_record(r) for r in records], "total": len(records)}
+
+
+class SourceDocumentInput(BaseModel):
+    document_type: str
+    title: str = ""
+    issuer: str = ""
+    revision: str = ""
+    issue_date: str = ""
+    expiry_date: str = ""
+    file_name: str = ""
+    file_size: int = 0
+    file_hash: str = ""
+    rights_status: str = "internal_review"
+
+
+def _serialize_source_document(doc: SourceDocument) -> dict:
+    return {
+        "id": doc.id,
+        "passport_id": doc.passport_id,
+        "document_type": doc.document_type,
+        "title": doc.title,
+        "issuer": doc.issuer,
+        "revision": doc.revision,
+        "issue_date": doc.issue_date,
+        "expiry_date": doc.expiry_date,
+        "file_name": doc.file_name,
+        "file_size": doc.file_size,
+        "file_hash": doc.file_hash,
+        "rights_status": doc.rights_status,
+        "review_status": doc.review_status,
+        "created_at": str(doc.created_at),
+    }
+
+
+@router.post("/{record_id}/source-documents", status_code=201)
+def attach_source_document(record_id: int, payload: SourceDocumentInput, db: Session = Depends(get_db)):
+    record = db.query(DPPRecord).filter(DPPRecord.id == record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Passport not found")
+
+    def _clean(val: str, max_len: int = 500) -> str:
+        return re.sub(r"<[^>]*>", "", val).replace("\x00", "").strip()[:max_len]
+
+    doc = SourceDocument(
+        passport_id=record.passport_id,
+        document_type=_clean(payload.document_type, 50),
+        title=_clean(payload.title, 200),
+        issuer=_clean(payload.issuer, 200),
+        revision=_clean(payload.revision, 50),
+        issue_date=_clean(payload.issue_date, 20),
+        expiry_date=_clean(payload.expiry_date, 20),
+        file_name=_clean(payload.file_name, 200),
+        file_size=max(0, payload.file_size),
+        file_hash=_clean(payload.file_hash, 128),
+        rights_status=_clean(payload.rights_status, 50),
+    )
+    db.add(doc)
+
+    dpp = json.loads(record.dpp_json)
+    sources = dpp.get("source_documents", [])
+    sources.append({
+        "document_type": doc.document_type,
+        "title": doc.title,
+        "issuer": doc.issuer,
+        "file_name": doc.file_name,
+        "rights_status": doc.rights_status,
+        "review_status": "pending",
+    })
+    dpp["source_documents"] = sources
+    record.dpp_json = json.dumps(dpp)
+
+    db.commit()
+    db.refresh(doc)
+    return _serialize_source_document(doc)
+
+
+@router.get("/{record_id}/source-documents")
+def list_source_documents(record_id: int, db: Session = Depends(get_db)):
+    record = db.query(DPPRecord).filter(DPPRecord.id == record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Passport not found")
+    docs = (
+        db.query(SourceDocument)
+        .filter(SourceDocument.passport_id == record.passport_id)
+        .order_by(SourceDocument.created_at.desc())
+        .all()
+    )
+    return {"items": [_serialize_source_document(d) for d in docs], "total": len(docs)}
+
+
+@router.get("/{record_id}/revisions")
+def list_revisions(record_id: int, db: Session = Depends(get_db)):
+    record = db.query(DPPRecord).filter(DPPRecord.id == record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Passport not found")
+    revisions = (
+        db.query(DPPRevision)
+        .filter(DPPRevision.dpp_record_id == record_id)
+        .order_by(DPPRevision.created_at.desc())
+        .all()
+    )
+    return {
+        "items": [
+            {
+                "id": r.id,
+                "revision_number": r.revision_number,
+                "changed_fields": json.loads(r.changed_fields or "[]"),
+                "previous_values": json.loads(r.previous_values or "{}"),
+                "new_values": json.loads(r.new_values or "{}"),
+                "changed_by": r.changed_by,
+                "change_reason": r.change_reason,
+                "created_at": str(r.created_at),
+            }
+            for r in revisions
+        ],
+        "total": len(revisions),
+    }
 
 
 def _batch_envelope(record: DPPRecord, batch_number: str, request: Request | None = None, db: Session | None = None) -> dict:
@@ -506,6 +632,18 @@ def update_passport(record_id: int, payload: dict, db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail="Passport not found")
 
     dpp = json.loads(record.dpp_json)
+    changed_fields = []
+    previous_values = {}
+    new_values = {}
+    tracked = ["product_name", "manufacturer", "category", "description", "batch_number", "origin_country"]
+
+    for field in tracked:
+        if field in payload:
+            old_val = dpp.get(field, "") if field not in ("batch_number", "origin_country") else dpp.get("batch_info", {}).get(field, "")
+            if str(old_val) != str(payload[field]):
+                changed_fields.append(field)
+                previous_values[field] = old_val
+                new_values[field] = payload[field]
 
     if "product_name" in payload:
         dpp["product_name"] = payload["product_name"]
@@ -525,12 +663,24 @@ def update_passport(record_id: int, payload: dict, db: Session = Depends(get_db)
         dpp.setdefault("batch_info", {})["origin_country"] = payload["origin_country"]
         record.origin_country = payload["origin_country"]
     if "standards_compliance" in payload:
+        old_standards = dpp.get("standards_compliance", [])
+        if old_standards != payload["standards_compliance"]:
+            changed_fields.append("standards_compliance")
+            previous_values["standards_compliance"] = old_standards
+            new_values["standards_compliance"] = payload["standards_compliance"]
         dpp["standards_compliance"] = payload["standards_compliance"]
         record.standards_count = len(payload["standards_compliance"])
     if "technical_properties" in payload:
+        old_props = list(dpp.get("technical_properties", {}).keys())
+        new_props = list(payload["technical_properties"].keys())
+        if old_props != new_props:
+            changed_fields.append("technical_properties")
+            previous_values["technical_properties_keys"] = old_props
+            new_values["technical_properties_keys"] = new_props
         dpp["technical_properties"] = payload["technical_properties"]
         record.properties_count = len(payload["technical_properties"])
     if "dpp_json" in payload:
+        changed_fields.append("dpp_json_full_replace")
         dpp = payload["dpp_json"]
         record.product_name = dpp.get("product_name", record.product_name)
         record.manufacturer = dpp.get("manufacturer", record.manufacturer)
@@ -539,6 +689,20 @@ def update_passport(record_id: int, payload: dict, db: Session = Depends(get_db)
         record.properties_count = len(dpp.get("technical_properties", {}))
 
     record.dpp_json = json.dumps(dpp)
+
+    if changed_fields:
+        rev_count = db.query(DPPRevision).filter(DPPRevision.dpp_record_id == record_id).count()
+        revision = DPPRevision(
+            dpp_record_id=record_id,
+            revision_number=rev_count + 1,
+            changed_fields=json.dumps(changed_fields),
+            previous_values=json.dumps(previous_values),
+            new_values=json.dumps(new_values),
+            changed_by=payload.get("_changed_by", "Product Passport Engineer"),
+            change_reason=payload.get("_change_reason", ""),
+        )
+        db.add(revision)
+
     db.commit()
     db.refresh(record)
 
@@ -547,6 +711,7 @@ def update_passport(record_id: int, payload: dict, db: Session = Depends(get_db)
         "id": record.id,
         "passport_id": record.passport_id,
         "product_name": record.product_name,
+        "revision": len(changed_fields) > 0,
     }
 
 

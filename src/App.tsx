@@ -5,6 +5,7 @@
 
 import { useState } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, useSearchParams } from 'react-router-dom';
+import { RoleProvider } from './RoleContext';
 import { Sidebar } from './components/Sidebar';
 import { TopNav } from './components/TopNav';
 import { HomeView } from './views/HomeView';
@@ -126,10 +127,12 @@ function AppShell() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/*" element={<PublicPassportRoute />} />
-      </Routes>
-    </BrowserRouter>
+    <RoleProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/*" element={<PublicPassportRoute />} />
+        </Routes>
+      </BrowserRouter>
+    </RoleProvider>
   );
 }

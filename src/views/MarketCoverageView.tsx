@@ -91,8 +91,25 @@ export function MarketCoverageView() {
                   ))}
                 </div>
                 {((target.missing_documents?.length || 0) > 0 || (target.missing_standards?.length || 0) > 0) && (
-                  <div className="mt-3 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-3 text-xs text-yellow-200">
-                    Missing: {[...(target.missing_documents || []), ...(target.missing_standards || [])].join(', ')}
+                  <div className="mt-3 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-3 text-xs space-y-1.5">
+                    {(target.missing_documents || []).length > 0 && (
+                      <div className="text-yellow-200">
+                        <span className="font-semibold">Missing documents:</span> {target.missing_documents!.join(', ')}
+                      </div>
+                    )}
+                    {(target.missing_standards || []).length > 0 && (
+                      <div className="text-yellow-200">
+                        <span className="font-semibold">Missing standards:</span> {target.missing_standards!.join(', ')}
+                      </div>
+                    )}
+                    <div className="text-yellow-300/70 pt-1 border-t border-yellow-500/20">
+                      Action: Request these from manufacturer via CRM, or upload evidence documents to close the gap.
+                    </div>
+                  </div>
+                )}
+                {target.coverage_status === 'covered' && (
+                  <div className="mt-3 rounded-lg border border-green-500/20 bg-green-500/10 p-2 text-xs text-green-300">
+                    All required documents and standards are covered for this category.
                   </div>
                 )}
               </div>

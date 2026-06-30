@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { useRole } from '../RoleContext';
 import { ManufacturerSummary, ManufacturerDetail, CRMActivity } from '../types';
 import { Plus, ChevronRight, Mail, Phone, Globe, X, ArrowRight, MessageSquare, ClipboardList, CheckCircle } from 'lucide-react';
 
@@ -140,6 +141,7 @@ export function ManufacturersView() {
 }
 
 function DetailPanel({ detail, onClose, onRefresh }: { detail: ManufacturerDetail; onClose: () => void; onRefresh: () => void }) {
+  const { canApprove } = useRole();
   const [activityType, setActivityType] = useState('note');
   const [activityDesc, setActivityDesc] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -241,19 +243,52 @@ function DetailPanel({ detail, onClose, onRefresh }: { detail: ManufacturerDetai
               <input value={uploadForm.title} onChange={e => setUploadForm({ ...uploadForm, title: e.target.value })} placeholder="Title" className="bg-[#0f1117] border border-[#2e3245] rounded-lg px-3 py-2 text-xs text-white" />
               <button onClick={createUpload} disabled={submitting} className="py-2 rounded-lg bg-white text-black text-xs font-medium disabled:opacity-40">Record Upload</button>
             </div>
-            <div className="space-y-2">
-              {(detail.document_requests || []).map(request => (
-                <div key={request.id} className="rounded-lg bg-[#0f1117] border border-[#2e3245] p-3 text-xs">
-                  <div className="text-white font-medium">{request.product_scope || 'Portfolio request'}</div>
-                  <div className="text-[#8b8fa3]">Missing: {request.missing_documents.length ? request.missing_documents.join(', ') : 'None'}</div>
-                </div>
-              ))}
-              {(detail.uploads || []).map(upload => (
-                <div key={upload.id} className="rounded-lg bg-[#0f1117] border border-[#2e3245] p-3 text-xs text-[#c0c4d6]">
-                  {upload.document_type}: {upload.file_name || upload.title} ({upload.review_status})
-                </div>
-              ))}
-            </div>
+            {(detail.document_requests || []).length > 0 && (
+              <div className="space-y-2 mb-3">
+                <p className="text-[10px] text-[#63677a] uppercase font-semibold tracking-wider">Active Requests</p>
+                {(detail.document_requests || []).map(request => {
+                  const statusColor = request.status === 'fulfilled' ? 'border-green-500/30' : request.missing_documents?.length ? 'border-amber-500/30' : 'border-[#2e3245]';
+                  return (
+                    <div key={request.id} className={`rounded-lg bg-[#0f1117] border ${statusColor} p-3 text-xs`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-white font-medium">{request.product_scope || 'Portfolio request'}</span>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${request.status === 'fulfilled' ? 'bg-green-500/10 text-green-400' : 'bg-amber-500/10 text-amber-400'}`}>
+                          {request.status || 'open'}
+                        </span>
+                      </div>
+                      {request.due_date && <div className="text-[#8b8fa3]">Due: {request.due_date}</div>}
+                      {request.missing_documents?.length > 0 && (
+                        <div className="text-amber-300/80 mt-1">Missing: {request.missing_documents.join(', ')}</div>
+                      )}
+                      {request.missing_documents?.length === 0 && (
+                        <div className="text-green-400/80 mt-1">All documents received</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {(detail.uploads || []).length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[10px] text-[#63677a] uppercase font-semibold tracking-wider">Received Uploads</p>
+                {(detail.uploads || []).map(upload => {
+                  const reviewColor = upload.review_status === 'approved' ? 'text-green-400' : upload.review_status === 'rejected' ? 'text-red-400' : 'text-yellow-400';
+                  return (
+                    <div key={upload.id} className="rounded-lg bg-[#0f1117] border border-[#2e3245] p-3 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-white font-medium">{upload.document_type}: {upload.title || upload.file_name}</span>
+                        <span className={`text-[10px] font-semibold uppercase ${reviewColor}`}>{upload.review_status}</span>
+                      </div>
+                      {upload.product_scope && <div className="text-[#8b8fa3] mt-0.5">Scope: {upload.product_scope}</div>}
+                      <div className="text-[#63677a] mt-0.5">Rights: {upload.rights_status}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {(detail.document_requests || []).length === 0 && (detail.uploads || []).length === 0 && (
+              <p className="text-xs text-[#63677a]">No document requests or uploads yet.</p>
+            )}
           </div>
 
           {/* Claim profile */}
@@ -276,9 +311,15 @@ function DetailPanel({ detail, onClose, onRefresh }: { detail: ManufacturerDetai
             <div className="flex flex-col gap-2 sm:flex-row">
               <button onClick={submitClaim} disabled={submitting} className="flex-1 py-2 rounded-lg bg-white text-black text-xs font-medium disabled:opacity-40">Submit Claim</button>
               <button onClick={requestRevision} disabled={submitting || !detail.claims?.length} className="px-3 py-2 rounded-lg bg-yellow-500/10 text-yellow-400 text-xs font-medium disabled:opacity-40">Revision</button>
-              <button onClick={approveLatestClaim} disabled={submitting || !detail.claims?.length} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-green-500/10 text-green-400 text-xs font-medium disabled:opacity-40">
-                <CheckCircle className="w-3.5 h-3.5" /> Approve
-              </button>
+              {canApprove ? (
+                <button onClick={approveLatestClaim} disabled={submitting || !detail.claims?.length} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-green-500/10 text-green-400 text-xs font-medium disabled:opacity-40">
+                  <CheckCircle className="w-3.5 h-3.5" /> Approve
+                </button>
+              ) : (
+                <span className="flex items-center gap-1 px-3 py-2 rounded-lg bg-[#1a1d27] text-[#63677a] text-xs" title="Switch to Reviewer or Admin role to approve claims">
+                  <CheckCircle className="w-3.5 h-3.5" /> Approve (Reviewer only)
+                </span>
+              )}
             </div>
           </div>
 

@@ -1,10 +1,12 @@
 import type { ChangeEvent } from 'react';
 import { useState, useEffect, useRef } from 'react';
-import { Database, Download, Trash2, X, FileJson, Loader2, Search, RefreshCw, FileSpreadsheet, Upload, Check, AlertCircle, Pencil, FileText } from 'lucide-react';
+import { Database, Download, Trash2, X, FileJson, Loader2, Search, RefreshCw, FileSpreadsheet, Upload, Check, AlertCircle, Pencil, FileText, ShieldAlert } from 'lucide-react';
 import { api, resolveAssetUrl } from '../api';
+import { useRole } from '../RoleContext';
 import type { PassportSummary, PassportDetail, QualityRecord } from '../types';
 
 export function PassportsView() {
+  const { canDelete, canEdit, canApprove, role } = useRole();
   const [passports, setPassports] = useState<PassportSummary[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -28,6 +30,10 @@ export function PassportsView() {
   const [ifcExporting, setIfcExporting] = useState(false);
   const [qualityRecords, setQualityRecords] = useState<QualityRecord[]>([]);
   const [qaForm, setQaForm] = useState({ batch_number: '', status: 'passed', tested_by: '', test_date: new Date().toISOString().slice(0, 10), disposition: 'release' });
+  const [sourceDocuments, setSourceDocuments] = useState<{ id: number; document_type: string; title: string; issuer: string; file_name: string; file_size: number; rights_status: string; review_status: string; created_at: string }[]>([]);
+  const [revisions, setRevisions] = useState<{ id: number; revision_number: number; changed_fields: string[]; changed_by: string; created_at: string }[]>([]);
+  const [sourceForm, setSourceForm] = useState({ document_type: 'epd', title: '', issuer: '', file_name: '' });
+  const [showAddSource, setShowAddSource] = useState(false);
 
   const filteredPassports = passports.filter((passport) => {
     const haystack = [
@@ -66,8 +72,14 @@ export function PassportsView() {
     try {
       const data = await api.getPassport(id);
       setDetailData(data);
-      const qa = await api.getQualityRecords(id).catch(() => ({ items: [] as QualityRecord[] }));
+      const [qa, docs, revs] = await Promise.all([
+        api.getQualityRecords(id).catch(() => ({ items: [] as QualityRecord[] })),
+        api.getSourceDocuments(id).catch(() => ({ items: [] })),
+        api.getRevisions(id).catch(() => ({ items: [] })),
+      ]);
       setQualityRecords(qa.items);
+      setSourceDocuments(docs.items);
+      setRevisions(revs.items);
       setQaForm(prev => ({ ...prev, batch_number: data.batch_number || data.dpp_json?.batch_info?.batch_number || '' }));
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Failed to load passport details.');
@@ -91,11 +103,26 @@ export function PassportsView() {
     }
   };
 
+  const attachSource = async () => {
+    if (!detailData || !sourceForm.document_type.trim()) return;
+    try {
+      const doc = await api.attachSourceDocument(detailData.id, sourceForm);
+      setSourceDocuments(prev => [doc, ...prev]);
+      setShowAddSource(false);
+      setSourceForm({ document_type: 'epd', title: '', issuer: '', file_name: '' });
+      const updated = await api.getPassport(detailData.id);
+      setDetailData(updated);
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Failed to attach source document');
+    }
+  };
+
   const closeDetail = () => {
     setSelectedId(null);
     setDetailData(null);
     setDeleteConfirmId(null);
     setEditing(false);
+    setShowAddSource(false);
   };
 
   const startEditing = () => {
@@ -442,15 +469,111 @@ export function PassportsView() {
                         <input value={qaForm.tested_by} onChange={e => setQaForm(prev => ({ ...prev, tested_by: e.target.value }))} placeholder="Inspector" className="bg-[#0f1117] border border-[#2e3245] rounded-xl px-3 py-2 text-sm text-white" />
                         <button onClick={createQaRecord} className="bg-white text-black px-4 py-2 rounded-xl text-sm font-bold">Add QA</button>
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        {qualityRecords.map(record => (
-                          <a key={record.id} href={`/api/passports/${detailData.id}/batch/${encodeURIComponent(record.batch_number)}/qr`} target="_blank" rel="noreferrer" className="text-xs px-3 py-1.5 rounded-full bg-[#0f1117] border border-[#2e3245] text-[#c0c4d6] hover:text-white">
-                            {record.batch_number} QR: {record.status}
-                          </a>
-                        ))}
-                        {qualityRecords.length === 0 && <span className="text-xs text-[#63677a]">No QA records yet.</span>}
-                      </div>
+                      {qualityRecords.length > 0 ? (
+                        <div className="space-y-2 mt-2">
+                          {qualityRecords.map(record => {
+                            const statusColor = record.status === 'passed' ? 'text-green-400 border-green-500/30 bg-green-500/10'
+                              : record.status === 'failed' ? 'text-red-400 border-red-500/30 bg-red-500/10'
+                              : record.status === 'quarantined' ? 'text-amber-400 border-amber-500/30 bg-amber-500/10'
+                              : 'text-[#8b8fa3] border-[#2e3245] bg-[#0f1117]';
+                            return (
+                              <div key={record.id} className={`rounded-xl border p-3 ${statusColor}`}>
+                                <div className="flex flex-wrap items-center gap-2 mb-1">
+                                  <span className="font-bold text-sm">{record.batch_number}</span>
+                                  <span className="text-xs uppercase font-semibold px-2 py-0.5 rounded-full border border-current">{record.status}</span>
+                                  {record.disposition && <span className="text-xs opacity-70">Disposition: {record.disposition}</span>}
+                                </div>
+                                <div className="flex flex-wrap gap-3 text-xs opacity-80">
+                                  {record.tested_by && <span>Inspector: {record.tested_by}</span>}
+                                  {record.test_date && <span>Date: {record.test_date}</span>}
+                                  {record.results && record.results.length > 0 && (
+                                    <span>{record.results.length} test result{record.results.length > 1 ? 's' : ''}</span>
+                                  )}
+                                </div>
+                                {record.notes && <p className="text-xs mt-1 opacity-70">{record.notes}</p>}
+                                <a href={`/api/passports/${detailData.id}/batch/${encodeURIComponent(record.batch_number)}/qr`} target="_blank" rel="noreferrer" className="inline-block mt-2 text-xs underline opacity-70 hover:opacity-100">
+                                  Download Batch QR
+                                </a>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-[#63677a] mt-2">No QA records yet. Add a batch quality check above.</p>
+                      )}
                     </div>
+                    {/* Source Documents — multi-document linking */}
+                    <div className="mb-5 bg-[#242736]/60 border border-[#2e3245] rounded-2xl p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <label className="text-xs font-semibold text-[#8b8fa3] uppercase tracking-wider">Linked Source Documents</label>
+                        <button onClick={() => setShowAddSource(!showAddSource)} className="text-xs px-3 py-1 rounded-lg bg-[#0f1117] border border-[#2e3245] text-[#c0c4d6] hover:text-white">
+                          {showAddSource ? 'Cancel' : '+ Attach Document'}
+                        </button>
+                      </div>
+                      {showAddSource && (
+                        <div className="grid grid-cols-2 gap-2 mb-3">
+                          <select value={sourceForm.document_type} onChange={e => setSourceForm(prev => ({ ...prev, document_type: e.target.value }))} className="bg-[#0f1117] border border-[#2e3245] rounded-lg px-3 py-2 text-xs text-white">
+                            <option value="tds">TDS</option>
+                            <option value="epd">EPD</option>
+                            <option value="dop">DoP</option>
+                            <option value="test_report">Test Report</option>
+                            <option value="sds">SDS</option>
+                            <option value="certificate">Certificate</option>
+                          </select>
+                          <input value={sourceForm.title} onChange={e => setSourceForm(prev => ({ ...prev, title: e.target.value }))} placeholder="Document title" className="bg-[#0f1117] border border-[#2e3245] rounded-lg px-3 py-2 text-xs text-white" />
+                          <input value={sourceForm.issuer} onChange={e => setSourceForm(prev => ({ ...prev, issuer: e.target.value }))} placeholder="Issuer" className="bg-[#0f1117] border border-[#2e3245] rounded-lg px-3 py-2 text-xs text-white" />
+                          <button onClick={attachSource} className="bg-white text-black px-3 py-2 rounded-lg text-xs font-bold">Attach</button>
+                        </div>
+                      )}
+                      {/* Primary source from DPP */}
+                      {detailData.dpp_json?.source_document && (
+                        <div className="rounded-lg bg-[#0f1117] border border-blue-500/30 p-3 text-xs mb-2">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-blue-400 font-semibold">{detailData.dpp_json.source_document.type || detailData.dpp_json.source_document.document_type_code?.toUpperCase()}</span>
+                            <span className="text-[10px] uppercase text-blue-300">Primary</span>
+                          </div>
+                          <div className="text-white">{detailData.dpp_json.source_document.document_title || detailData.dpp_json.source_document.title}</div>
+                          {detailData.dpp_json.source_document.issuer && <div className="text-[#8b8fa3] mt-0.5">Issuer: {detailData.dpp_json.source_document.issuer}</div>}
+                        </div>
+                      )}
+                      {/* Additional linked source documents */}
+                      {sourceDocuments.map(doc => (
+                        <div key={doc.id} className="rounded-lg bg-[#0f1117] border border-[#2e3245] p-3 text-xs mb-2">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[#c0c4d6] font-semibold">{doc.document_type.toUpperCase()}</span>
+                            <span className={`text-[10px] uppercase font-semibold ${doc.review_status === 'approved' ? 'text-green-400' : 'text-yellow-400'}`}>{doc.review_status}</span>
+                          </div>
+                          <div className="text-white">{doc.title || doc.file_name}</div>
+                          {doc.issuer && <div className="text-[#8b8fa3] mt-0.5">Issuer: {doc.issuer}</div>}
+                          {doc.file_size > 0 && <div className="text-[#63677a] mt-0.5">File: {doc.file_name} ({(doc.file_size / 1024).toFixed(1)} KB)</div>}
+                        </div>
+                      ))}
+                      {sourceDocuments.length === 0 && !detailData.dpp_json?.source_document && (
+                        <p className="text-xs text-[#63677a]">No source documents linked. Attach TDS, EPD, DoP, or test reports.</p>
+                      )}
+                    </div>
+
+                    {/* Revision History */}
+                    {revisions.length > 0 && (
+                      <div className="mb-5 bg-[#242736]/60 border border-[#2e3245] rounded-2xl p-4">
+                        <label className="text-xs font-semibold text-[#8b8fa3] uppercase tracking-wider mb-3 block">Revision History</label>
+                        <div className="space-y-2">
+                          {revisions.map(rev => (
+                            <div key={rev.id} className="rounded-lg bg-[#0f1117] border border-[#2e3245] p-3 text-xs">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-white font-semibold">Rev {rev.revision_number}</span>
+                                <span className="text-[#63677a]">{new Date(rev.created_at).toLocaleDateString()}</span>
+                              </div>
+                              <div className="text-[#8b8fa3]">
+                                Changed: {rev.changed_fields.map(f => f.replace(/_/g, ' ')).join(', ')}
+                              </div>
+                              <div className="text-[#63677a] mt-0.5">By: {rev.changed_by}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <h4 className="text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center">
                       <FileJson className="w-5 h-5 mr-2" /> Digital Product Passport JSON
                     </h4>
@@ -464,12 +587,24 @@ export function PassportsView() {
 
                 <div className="flex flex-wrap justify-between items-center p-6 border-t border-[#2e3245] bg-[#0f1117] gap-3">
                   <div className="flex gap-2">
-                    <button onClick={() => setDeleteConfirmId(detailData.id)} className="flex items-center text-[#ef4444] hover:bg-[#ef4444]/10 px-4 py-2.5 rounded-full font-medium transition-colors text-sm">
-                      <Trash2 className="w-4 h-4 mr-1.5" /> Delete
-                    </button>
-                    <button onClick={startEditing} className="flex items-center text-blue-400 hover:bg-blue-500/10 px-4 py-2.5 rounded-full font-medium transition-colors text-sm">
-                      <Pencil className="w-4 h-4 mr-1.5" /> Edit
-                    </button>
+                    {canDelete ? (
+                      <button onClick={() => setDeleteConfirmId(detailData.id)} className="flex items-center text-[#ef4444] hover:bg-[#ef4444]/10 px-4 py-2.5 rounded-full font-medium transition-colors text-sm">
+                        <Trash2 className="w-4 h-4 mr-1.5" /> Delete
+                      </button>
+                    ) : (
+                      <span className="flex items-center text-[#63677a] px-4 py-2.5 text-sm" title="Only Admin role can delete passports">
+                        <ShieldAlert className="w-4 h-4 mr-1.5" /> Delete (Admin only)
+                      </span>
+                    )}
+                    {canEdit ? (
+                      <button onClick={startEditing} className="flex items-center text-blue-400 hover:bg-blue-500/10 px-4 py-2.5 rounded-full font-medium transition-colors text-sm">
+                        <Pencil className="w-4 h-4 mr-1.5" /> Edit
+                      </button>
+                    ) : (
+                      <span className="flex items-center text-[#63677a] px-4 py-2.5 text-sm" title="Reviewers cannot edit — switch to Engineer or Admin role">
+                        <Pencil className="w-4 h-4 mr-1.5" /> Edit (Engineer/Admin)
+                      </span>
+                    )}
                   </div>
                   <div className="flex gap-2">
                     <button

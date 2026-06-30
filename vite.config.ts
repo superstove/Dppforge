@@ -15,9 +15,9 @@ export default defineConfig(() => {
       port: 3000,
       host: '0.0.0.0',
       proxy: {
-        '/api': 'http://localhost:8004',
-        '/qr': 'http://localhost:8004',
-        '/json': 'http://localhost:8004',
+        '/api': 'http://localhost:8001',
+        '/qr': 'http://localhost:8001',
+        '/json': 'http://localhost:8001',
       },
     },
   };

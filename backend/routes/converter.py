@@ -28,6 +28,34 @@ from utils import generate_qr_bytes
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
 
+
+def _sanitize_text(value: str, max_length: int = 500) -> str:
+    if not isinstance(value, str):
+        return ""
+    value = re.sub(r"<[^>]*>", "", value)
+    value = value.replace("\x00", "")
+    value = value.strip()
+    return value[:max_length]
+
+
+def _sanitize_dict(data: dict, max_depth: int = 3) -> dict:
+    if max_depth <= 0:
+        return {}
+    cleaned: dict = {}
+    for key, val in data.items():
+        key = _sanitize_text(str(key), 100)
+        if not key:
+            continue
+        if isinstance(val, str):
+            cleaned[key] = _sanitize_text(val)
+        elif isinstance(val, dict):
+            cleaned[key] = _sanitize_dict(val, max_depth - 1)
+        elif isinstance(val, list):
+            cleaned[key] = [_sanitize_text(str(v)) if isinstance(v, str) else v for v in val[:200]]
+        else:
+            cleaned[key] = val
+    return cleaned
+
 CONSTRUCTASK_URL = os.getenv("CONSTRUCTASK_URL", "https://constructask.vercel.app").rstrip("/")
 MINIMUM_SAVE_CONFIDENCE = 90
 
@@ -508,118 +536,6 @@ def _infer_manufacturer(text: str, product_name: str) -> str:
         if any(n in combined for n in needles):
             return mfr
     return ""
-
-
-def _extract_with_regex(text: str) -> dict:
-    extracted: dict[str, Any] = {}
-    lines = text.split("\n")
-
-    def is_noise_line(value: str) -> bool:
-        lowered = value.strip().lower()
-        if not lowered:
-            return True
-        if re.fullmatch(r"-+\s*(ocr\s*)?page\s+\d+\s*-+", lowered):
-            return True
-        if lowered.startswith(("http", "www", "page ")):
-            return True
-        if lowered in {"technical data sheet", "technical data sheet (tds)", "product data sheet", "data sheet", "tds"}:
-            return True
-        if lowered.startswith(("sample document", "document no", "revision:", "issue date", "property value unit")):
-            return True
-        return False
-
-    def looks_like_product_name(value: str) -> bool:
-        if is_noise_line(value):
-            return False
-        if len(value) < 4 or len(value) > 120:
-            return False
-        if re.search(r"[:=|]", value):
-            return False
-        if re.search(r"\d+\s*(mpa|mm|kg|g/m|%|hours?|minutes?)\b", value, re.IGNORECASE):
-            return False
-        return bool(re.search(r"[A-Za-z]{3,}", value))
-
-    for line in lines[:40]:
-        line = line.strip()
-        product_match = re.match(r"^(?:product|product name)\s*[:=-]\s*(.+)$", line, flags=re.IGNORECASE)
-        if product_match and looks_like_product_name(product_match.group(1)):
-            extracted["product_name"] = product_match.group(1).strip()
-            break
-
-    for line in lines[:40]:
-        line = line.strip()
-        manufacturer_match = re.match(r"^(?:manufacturer|company|manufactured by)\s*[:=-]\s*(.+)$", line, flags=re.IGNORECASE)
-        if manufacturer_match:
-            extracted["manufacturer"] = manufacturer_match.group(1).strip()
-            break
-
-    for line in lines[:15]:
-        line = line.strip()
-        if extracted.get("product_name"):
-            break
-        if looks_like_product_name(line):
-            extracted.setdefault("product_name", line)
-            break
-
-    product_name = extracted.get("product_name", "")
-    inferred_mfr = _infer_manufacturer(text, product_name)
-    if inferred_mfr and not extracted.get("manufacturer"):
-        extracted["manufacturer"] = inferred_mfr
-    extracted["category"] = _infer_category(text)
-
-    standards = []
-    tech_props = {}
-    working_props = {}
-    working_keywords = (
-        "open time", "pot life", "adjustability", "traffic", "walkable", "curing",
-        "setting time", "water", "mix ratio", "coverage", "shelf life", "workability",
-    )
-    for line in lines:
-        for pat in [r"(ISO\s*\d+[\w\-]*)", r"(EN\s*\d+[\w\-]*)", r"(ASTM\s*[A-Z]\d+[\w\-]*)", r"(ANSI\s*[A-Z]?\d+[\w\.\-]*)", r"(IS\s*\d+[\w\-]*)"]:
-            for m in re.findall(pat, line, re.IGNORECASE):
-                if m not in standards:
-                    standards.append(m)
-
-        kv = re.match(
-            r"^([A-Za-z0-9\s\-/().]+?)\s*(?:[:=]|\|)\s*([<>]?\s*\d[\d.,]*(?:\s*[-–]\s*\d[\d.,]*)?)\s*([A-Za-z/%°²³⁻¹μµ.\- ]+)?",
-            line.strip(),
-        )
-        if kv:
-            key = re.sub(r"[^a-z0-9]+", "_", kv.group(1).lower()).strip("_")
-            raw_value = kv.group(2).strip()
-            if re.search(r"[-–]", raw_value):
-                val: Any = re.sub(r"\s+", "", raw_value.replace("–", "-"))
-            else:
-                try:
-                    val = float(raw_value.replace(",", "").replace("<", "").replace(">", "").strip())
-                    if val == int(val):
-                        val = int(val)
-                except ValueError:
-                    val = raw_value
-            prop = {"value": val, "unit": normalize_unit((kv.group(3) or "").strip())}
-            if any(word in key.replace("_", " ") for word in working_keywords):
-                working_props[key] = prop
-            else:
-                tech_props[key] = prop
-
-    if standards:
-        extracted["standards_compliance"] = standards
-    if tech_props:
-        extracted["technical_properties"] = tech_props
-    if working_props:
-        extracted["working_properties"] = working_props
-
-    confidence = {
-        "product_name": 95 if extracted.get("product_name") else 0,
-        "manufacturer": 95 if extracted.get("manufacturer") else 0,
-        "technical_properties": 92 if len(tech_props) >= 3 else 75 if tech_props else 0,
-        "standards_compliance": 92 if standards else 0,
-    }
-    populated_scores = [score for score in confidence.values() if score > 0]
-    confidence["overall"] = round(sum(populated_scores) / len(populated_scores)) if populated_scores else 0
-    extracted["confidence"] = confidence
-    extracted["_extraction_method"] = "regex_fallback"
-    return extracted
 
 
 def _extract_with_regex(text: str) -> dict:
@@ -1146,6 +1062,22 @@ def publication_issues(dpp: dict, payload: ApprovalInput | None = None) -> list[
 @router.post("/manual")
 def manual_convert(payload: ManualInput):
     """Manual TDS-to-JSON conversion."""
+    payload.product_name = _sanitize_text(payload.product_name, 200)
+    payload.manufacturer = _sanitize_text(payload.manufacturer, 200)
+    payload.category = _sanitize_text(payload.category, 100)
+    payload.description = _sanitize_text(payload.description, 2000)
+    payload.batch_number = _sanitize_text(payload.batch_number, 100)
+    payload.origin_country = _sanitize_text(payload.origin_country, 100)
+    payload.additional_info = _sanitize_dict(payload.additional_info)
+    payload.identifiers = _sanitize_dict(payload.identifiers)
+    payload.manufacturing = _sanitize_dict(payload.manufacturing)
+    payload.supply_chain = _sanitize_dict(payload.supply_chain)
+    payload.health_safety = _sanitize_dict(payload.health_safety)
+    payload.lifecycle = _sanitize_dict(payload.lifecycle)
+    if not payload.product_name:
+        raise HTTPException(status_code=422, detail="Product name is required")
+    if not payload.manufacturer:
+        raise HTTPException(status_code=422, detail="Manufacturer is required")
     fields = payload.model_dump()
     fields["_extraction_method"] = "manual"
     # Manual confidence means the value was transcribed exactly as entered, not independently verified.
@@ -1163,6 +1095,9 @@ def manual_convert(payload: ManualInput):
 
 @router.post("/approve")
 def approve_dpp(payload: ApprovalInput):
+    payload.reviewer = _sanitize_text(payload.reviewer, 200)
+    payload.notes = _sanitize_text(payload.notes, 2000)
+    payload.rights_status = _sanitize_text(payload.rights_status, 100)
     issues = publication_issues(payload.dpp_json, payload)
     if issues:
         raise HTTPException(status_code=422, detail={"message": "Approval requirements not met", "issues": issues})

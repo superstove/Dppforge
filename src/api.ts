@@ -175,6 +175,34 @@ export const api = {
     return await res.json();
   },
 
+  getSourceDocuments: async (id: number): Promise<{ total: number; items: { id: number; passport_id: string; document_type: string; title: string; issuer: string; file_name: string; file_size: number; file_hash: string; rights_status: string; review_status: string; created_at: string }[] }> => {
+    const res = await fetch(`${API_BASE}/passports/${id}/source-documents`);
+    if (!res.ok) throw new Error('Failed to load source documents');
+    return await res.json();
+  },
+
+  attachSourceDocument: async (id: number, data: { document_type: string; title: string; issuer?: string; file_name?: string; file_size?: number; file_hash?: string; rights_status?: string }) => {
+    const res = await fetch(`${API_BASE}/passports/${id}/source-documents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Failed to attach source document');
+    return await res.json();
+  },
+
+  getRevisions: async (id: number): Promise<{ total: number; items: { id: number; revision_number: number; changed_fields: string[]; previous_values: Record<string, unknown>; new_values: Record<string, unknown>; changed_by: string; change_reason: string; created_at: string }[] }> => {
+    const res = await fetch(`${API_BASE}/passports/${id}/revisions`);
+    if (!res.ok) throw new Error('Failed to load revisions');
+    return await res.json();
+  },
+
+  getStandardsCatalog: async (): Promise<{ total: number; catalog_version: string; validation_status: string; disclaimer: string; items: { standard: string; source: string; description: string; passport_count: number; categories: string[] }[] }> => {
+    const res = await fetch(`${API_BASE}/compliance/standards-catalog`);
+    if (!res.ok) throw new Error('Failed to load standards catalog');
+    return await res.json();
+  },
+
   batchUpload: async (files: File[], docType = 'tds'): Promise<{ status: string; total: number; succeeded: number; failed: number; results: ConversionResult[] }> => {
     const formData = new FormData();
     files.forEach(f => formData.append('files', f));

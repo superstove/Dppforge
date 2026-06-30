@@ -6,12 +6,17 @@ Stages: target → engaged → onboarded → active
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+
+
+def _clean(val: str, max_len: int = 500) -> str:
+    return re.sub(r"<[^>]*>", "", val).replace("\x00", "").strip()[:max_len]
 
 from database import get_db
 from models import CRMActivity, DPPRecord, Manufacturer, ManufacturerClaim, ManufacturerDocumentRequest, ManufacturerUpload
@@ -331,10 +336,10 @@ def create_document_request(mfr_id: int, payload: DocumentRequestCreate, db: Ses
         raise HTTPException(status_code=404, detail="Manufacturer not found")
     request = ManufacturerDocumentRequest(
         manufacturer_id=mfr_id,
-        product_scope=payload.product_scope,
-        requested_documents=json.dumps(payload.requested_documents),
-        message=payload.message,
-        due_date=payload.due_date,
+        product_scope=_clean(payload.product_scope, 200),
+        requested_documents=json.dumps([_clean(d, 100) for d in payload.requested_documents[:20]]),
+        message=_clean(payload.message, 2000),
+        due_date=_clean(payload.due_date, 20),
     )
     db.add(request)
     db.add(CRMActivity(
@@ -363,11 +368,11 @@ def create_manufacturer_upload(mfr_id: int, payload: ManufacturerUploadCreate, d
     upload = ManufacturerUpload(
         manufacturer_id=mfr_id,
         document_request_id=payload.document_request_id,
-        document_type=payload.document_type,
-        title=payload.title,
-        file_name=payload.file_name,
-        product_scope=payload.product_scope,
-        rights_status=payload.rights_status,
+        document_type=_clean(payload.document_type, 50),
+        title=_clean(payload.title, 200),
+        file_name=_clean(payload.file_name, 200),
+        product_scope=_clean(payload.product_scope, 200),
+        rights_status=_clean(payload.rights_status, 50),
         review_status="pending",
         metadata_json=json.dumps(payload.metadata),
     )

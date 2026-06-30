@@ -25,7 +25,11 @@ from slowapi.util import get_remote_address
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from database import engine, Base, DATABASE_URL, get_db
-from models import DPPRecord
+from models import (
+    DPPRecord, ManufacturerDocumentRequest, ManufacturerUpload,
+    SourceDocument, FieldEvidence, QualityRecord, MarketTarget,
+    DPPRevision,
+)
 from routes import analytics, compliance, converter, manufacturers, notifications, passports
 from sqlalchemy.orm import Session
 
@@ -94,6 +98,23 @@ if not DATABASE_URL.startswith("sqlite"):
                     conn.execute(text(sql))
                     print(f"[MIGRATION] Added column: dpp_records.{col_name}")
             conn.commit()
+
+            # Ensure new tables exist (create_all only creates missing tables)
+            new_tables = [
+                "manufacturer_document_requests",
+                "manufacturer_uploads",
+                "source_documents",
+                "field_evidence",
+                "quality_records",
+                "market_targets",
+                "dpp_revisions",
+            ]
+            existing_tables = set(inspector.get_table_names())
+            for table_name in new_tables:
+                if table_name not in existing_tables:
+                    print(f"[MIGRATION] Table {table_name} missing, creating via metadata")
+            # Re-run create_all to pick up any missing tables
+            Base.metadata.create_all(bind=engine)
     except Exception as e:
         print(f"[MIGRATION] Column migration failed: {e}")
 

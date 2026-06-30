@@ -90,6 +90,8 @@ class ManufacturerUpload(Base):
     document_type = Column(String, default="")
     title = Column(String, default="")
     file_name = Column(String, default="")
+    file_size = Column(Integer, default=0)
+    file_hash = Column(String, default="")
     product_scope = Column(String, default="")
     rights_status = Column(String, default="internal_review")
     review_status = Column(String, default="pending")
@@ -169,6 +171,8 @@ class SourceDocument(Base):
     issue_date = Column(String, default="")
     expiry_date = Column(String, default="")
     file_name = Column(String, default="")
+    file_size = Column(Integer, default=0)
+    file_hash = Column(String, default="")
     rights_status = Column(String, default="internal_review")
     review_status = Column(String, default="pending")
     metadata_json = Column(Text, default="{}")
@@ -208,6 +212,20 @@ class QualityRecord(Base):
     attachments_json = Column(Text, default="[]")
     notes = Column(Text, default="")
     disposition = Column(String, default="")
+    created_at = Column(DateTime, default=_utcnow)
+
+
+class DPPRevision(Base):
+    __tablename__ = "dpp_revisions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    dpp_record_id = Column(Integer, ForeignKey("dpp_records.id"), nullable=False, index=True)
+    revision_number = Column(Integer, default=1)
+    changed_fields = Column(Text, default="[]")
+    previous_values = Column(Text, default="{}")
+    new_values = Column(Text, default="{}")
+    changed_by = Column(String, default="")
+    change_reason = Column(String, default="")
     created_at = Column(DateTime, default=_utcnow)
 
 

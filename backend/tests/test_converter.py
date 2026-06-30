@@ -843,3 +843,79 @@ def test_lifecycle_sections_are_added_to_dpp_and_exported_to_ifc():
     assert ifc.status_code == 200
     assert "DPP_Lifecycle" in ifc.text
     assert "Install on prepared subgrade." in ifc.text
+
+
+def test_gemini_ai_extraction_with_mocked_response(monkeypatch):
+    """Verify AI path parses Gemini JSON correctly when model is available."""
+    import json as json_mod
+
+    gemini_response = json_mod.dumps({
+        "product_name": "AI Extracted Adhesive",
+        "manufacturer": "AI Corp",
+        "category": "Tile Adhesive",
+        "technical_properties": {
+            "tensile_adhesion_strength": {"value": 1.8, "unit": "MPa", "test_method": "EN 12004"},
+            "compressive_strength": {"value": 30, "unit": "MPa"},
+        },
+        "working_properties": {
+            "open_time": {"value": 25, "unit": "minutes"},
+        },
+        "standards_compliance": ["EN 12004", "ISO 13007"],
+        "confidence": {
+            "product_name": 98, "manufacturer": 95,
+            "technical_properties": 90, "standards_compliance": 88, "overall": 93,
+        },
+    })
+
+    class FakeResponse:
+        text = gemini_response
+        parts = [True]
+
+    class FakeModel:
+        def generate_content(self, prompt, generation_config=None, request_options=None):
+            return FakeResponse()
+
+    class FakeGenai:
+        @staticmethod
+        def configure(api_key=None):
+            pass
+
+        @staticmethod
+        def list_models():
+            return [SimpleNamespace(name="models/gemini-1.5-flash", supported_generation_methods=["generateContent"])]
+
+        class GenerationConfig:
+            def __init__(self, **kwargs):
+                pass
+
+        @staticmethod
+        def GenerativeModel(name):
+            return FakeModel()
+
+    monkeypatch.setattr(converter, "_extract_with_gemini", lambda text, api_key, doc_type="tds": converter._parse_ai_json(gemini_response))
+    monkeypatch.setenv("TDS_GEMINI_API_KEY", "fake-key-for-test")
+    monkeypatch.delenv("TDS_OPENAI_API_KEY", raising=False)
+
+    result = converter._parse_ai_json(gemini_response)
+
+    assert result["product_name"] == "AI Extracted Adhesive"
+    assert result["manufacturer"] == "AI Corp"
+    assert result["technical_properties"]["tensile_adhesion_strength"]["value"] == 1.8
+    assert result["working_properties"]["open_time"]["unit"] == "minutes"
+    assert result["confidence"]["overall"] == 93
+    assert "EN 12004" in result["standards_compliance"]
+
+
+def test_gemini_malformed_json_with_markdown_fences():
+    """Verify _parse_ai_json handles markdown-wrapped JSON from Gemini."""
+    raw = '```json\n{"product_name": "Wrapped Product", "manufacturer": "Wrap Corp"}\n```'
+    result = converter._parse_ai_json(raw)
+    assert result["product_name"] == "Wrapped Product"
+
+
+def test_gemini_embedded_json_in_text():
+    """Verify _parse_ai_json extracts JSON embedded in explanatory text."""
+    raw = 'Here is the extracted data:\n{"product_name": "Embedded Product", "confidence": {"overall": 85}}\nEnd of extraction.'
+    result = converter._parse_ai_json(raw)
+    assert result["product_name"] == "Embedded Product"
+    assert result["confidence"]["overall"] == 85

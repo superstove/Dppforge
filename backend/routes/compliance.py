@@ -152,6 +152,77 @@ def rulebook():
     }
 
 
+@router.get("/standards-catalog")
+def standards_catalog(db: Session = Depends(get_db)):
+    records = db.query(DPPRecord).all()
+    observed: dict[str, dict] = {}
+    for r in records:
+        try:
+            dpp = json.loads(r.dpp_json or "{}")
+        except Exception:
+            continue
+        for std in dpp.get("standards_compliance", []):
+            std_str = str(std).strip()
+            if not std_str:
+                continue
+            if std_str not in observed:
+                observed[std_str] = {
+                    "standard": std_str,
+                    "source": "extracted",
+                    "passport_count": 0,
+                    "categories": set(),
+                }
+            observed[std_str]["passport_count"] += 1
+            if r.category:
+                observed[std_str]["categories"].add(r.category)
+
+    SEED_STANDARDS = [
+        {"standard": "EN 197-1", "source": "seed_catalog", "description": "Cement — Composition, specifications and conformity criteria"},
+        {"standard": "EN 206", "source": "seed_catalog", "description": "Concrete — Specification, performance, production and conformity"},
+        {"standard": "EN 13162", "source": "seed_catalog", "description": "Thermal insulation products for buildings — Mineral wool"},
+        {"standard": "EN 12620", "source": "seed_catalog", "description": "Aggregates for concrete"},
+        {"standard": "EN 1090-1", "source": "seed_catalog", "description": "Execution of steel and aluminium structures — Part 1: Conformity assessment"},
+        {"standard": "EN 14080", "source": "seed_catalog", "description": "Timber structures — Glued laminated timber"},
+        {"standard": "EN 13501-1", "source": "seed_catalog", "description": "Fire classification of construction products — Reaction to fire"},
+        {"standard": "EN 15804", "source": "seed_catalog", "description": "Sustainability of construction works — Environmental product declarations"},
+        {"standard": "EN 771-1", "source": "seed_catalog", "description": "Specification for masonry units — Clay masonry units"},
+        {"standard": "EN 14351-1", "source": "seed_catalog", "description": "Windows and doors — Product standard"},
+        {"standard": "ISO 14025", "source": "seed_catalog", "description": "Environmental labels and declarations — Type III EPD"},
+        {"standard": "ISO 21930", "source": "seed_catalog", "description": "Sustainability in buildings — EPD of construction products"},
+    ]
+
+    for seed in SEED_STANDARDS:
+        if seed["standard"] not in observed:
+            observed[seed["standard"]] = {
+                "standard": seed["standard"],
+                "source": seed["source"],
+                "description": seed.get("description", ""),
+                "passport_count": 0,
+                "categories": set(),
+            }
+        else:
+            observed[seed["standard"]]["description"] = seed.get("description", "")
+
+    catalog = []
+    for entry in observed.values():
+        catalog.append({
+            "standard": entry["standard"],
+            "source": entry.get("source", "extracted"),
+            "description": entry.get("description", ""),
+            "passport_count": entry["passport_count"],
+            "categories": sorted(entry["categories"]) if isinstance(entry["categories"], set) else entry.get("categories", []),
+        })
+    catalog.sort(key=lambda x: (-x["passport_count"], x["standard"]))
+
+    return {
+        "total": len(catalog),
+        "catalog_version": "2026-06-30",
+        "validation_status": "requires_expert_review",
+        "disclaimer": "Standards catalog is seeded from EU construction standards plus standards observed in existing passports. Expert validation required before regulatory use.",
+        "items": catalog,
+    }
+
+
 def _check_field(dpp: dict, field_key: str) -> dict:
     """Check if a mandatory field is present and populated in the DPP."""
     result = {"field": field_key, "status": "missing", "value": None}
