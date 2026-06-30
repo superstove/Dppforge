@@ -714,6 +714,38 @@ def _extract_with_regex(text: str) -> dict:
         else:
             tech_props[key] = prop
 
+    def section_text(start_pattern: str, stop_patterns: list[str]) -> str:
+        start_index: int | None = None
+        for idx, line in enumerate(lines):
+            if re.search(start_pattern, line, re.IGNORECASE):
+                start_index = idx + 1
+                break
+        if start_index is None:
+            return ""
+        collected: list[str] = []
+        for line in lines[start_index:]:
+            clean = line.strip()
+            if not clean:
+                continue
+            if any(re.search(stop, clean, re.IGNORECASE) for stop in stop_patterns):
+                break
+            collected.append(clean)
+        return " ".join(collected).strip()
+
+    section_stops = [
+        r"^product description\b",
+        r"^intended uses\b",
+        r"^property\s+value\b",
+        r"^standards compliance\b",
+        r"^application instructions\b",
+        r"^surface preparation\b",
+        r"^packaging\b",
+        r"^health\s*&\s*safety\b",
+        r"^sustainability\b",
+        r"^manufacturer contact\b",
+        r"^document revision\b",
+    ]
+
     for line in lines:
         clean_line = line.strip()
         for pat in [
@@ -771,6 +803,46 @@ def _extract_with_regex(text: str) -> dict:
         )
         if kv_match:
             add_property(kv_match.group(1), kv_match.group(2), kv_match.group(3) or "")
+
+    application_text = section_text(r"^application instructions\b", section_stops)
+    surface_text = section_text(r"^surface preparation\b", section_stops)
+    packaging_text = section_text(r"^packaging", section_stops)
+    safety_text = section_text(r"^health\s*&\s*safety\b", section_stops)
+    sustainability_text = section_text(r"^sustainability\b", section_stops)
+    contact_text = section_text(r"^manufacturer contact\b", section_stops)
+
+    if packaging_text:
+        extracted["packaging"] = packaging_text
+        shelf_match = re.search(r"shelf life\s*[:\-]?\s*(\d+)\s*months?", packaging_text, re.IGNORECASE)
+        if shelf_match:
+            extracted["shelf_life_months"] = int(shelf_match.group(1))
+    if sustainability_text:
+        extracted["sustainability_notes"] = sustainability_text
+        extracted["recyclable"] = bool(re.search(r"\brecyclable\b", sustainability_text, re.IGNORECASE))
+    lifecycle: dict[str, str] = {}
+    if application_text:
+        lifecycle["installation"] = application_text
+    if surface_text:
+        lifecycle["surface_preparation"] = surface_text
+    if packaging_text:
+        lifecycle["storage"] = packaging_text
+    if sustainability_text:
+        lifecycle["reuse_recycling_disposal"] = sustainability_text
+    if lifecycle:
+        extracted["lifecycle"] = lifecycle
+    if safety_text:
+        extracted["health_safety"] = {
+            "handling_guidance": safety_text,
+            "sds_required": bool(re.search(r"safety data sheet|\bSDS\b", safety_text, re.IGNORECASE)),
+        }
+    if contact_text:
+        email_match = re.search(r"[\w.\-+]+@[\w.\-]+", contact_text)
+        phone_match = re.search(r"\+?\d[\d\s().-]{6,}\d", contact_text)
+        extracted["supply_chain"] = {
+            "manufacturer_contact": contact_text,
+            **({"email": email_match.group(0)} if email_match else {}),
+            **({"phone": phone_match.group(0)} if phone_match else {}),
+        }
 
     if standards:
         extracted["standards_compliance"] = standards
@@ -882,7 +954,7 @@ def _ensure_quality_metadata(dpp: dict, conversion_method: str = "manual") -> di
 # DPP JSON builder
 # ---------------------------------------------------------------------------
 
-def build_dpp(fields: dict, batch_number: str = "", origin_country: str = "India", doc_type: str = "tds") -> dict:
+def build_dpp(fields: dict, batch_number: str = "", origin_country: str = "", doc_type: str = "tds") -> dict:
     from datetime import timezone
     product_name = fields.get("product_name", "Unknown Product")
     slug = re.sub(r"[^A-Z0-9]", "-", product_name.upper())[:20].strip("-")
@@ -912,22 +984,22 @@ def build_dpp(fields: dict, batch_number: str = "", origin_country: str = "India
             "packaging": fields.get("packaging", ""),
             "storage": fields.get("storage", ""),
             "shelf_life": {
-                "value": fields.get("shelf_life_months", 12),
+                "value": fields.get("shelf_life_months"),
                 "unit": "months",
                 "condition": "unopened, original packaging",
             },
         },
         "sustainability": {
-            "recycled_content_pct": fields.get("recycled_content_pct", 0),
+            "recycled_content_pct": fields.get("recycled_content_pct"),
             "carbon_footprint": {
-                "value": fields.get("carbon_footprint_value", 0),
+                "value": fields.get("carbon_footprint_value"),
                 "unit": fields.get("carbon_footprint_unit", "kgCO2e/unit"),
             },
-            "recyclable": fields.get("recyclable", True),
+            "recyclable": fields.get("recyclable"),
         },
         "batch_info": {
-            "batch_number": batch_number or f"BATCH-{date.today().strftime('%Y%m%d')}",
-            "production_date": str(date.today()),
+            "batch_number": batch_number,
+            "production_date": fields.get("production_date", ""),
             "origin_country": origin_country,
             "factory_location": fields.get("factory_location", ""),
         },
@@ -982,7 +1054,7 @@ def build_dpp(fields: dict, batch_number: str = "", origin_country: str = "India
     }]
     additional_info = fields.get("additional_info", {}) if isinstance(fields.get("additional_info", {}), dict) else {}
     for section in ["identifiers", "manufacturing", "supply_chain", "health_safety", "lifecycle"]:
-        if section in fields:
+        if fields.get(section):
             dpp[section] = fields[section]
         elif section in additional_info:
             dpp[section] = additional_info[section]
@@ -1004,19 +1076,26 @@ class ManualInput(BaseModel):
     suitable_for: list[str] = Field(default_factory=list)
     standards_compliance: list[str] = Field(default_factory=list)
     batch_number: str = ""
-    origin_country: str = "India"
+    origin_country: str = ""
     factory_location: str = ""
+    production_date: str = ""
     packaging: str = ""
     storage: str = ""
-    shelf_life_months: int = 12
-    recycled_content_pct: int = 0
-    carbon_footprint_value: float = 0.0
+    shelf_life_months: int | None = None
+    recycled_content_pct: float | None = None
+    carbon_footprint_value: float | None = None
     carbon_footprint_unit: str = "kgCO2e/unit"
+    recyclable: bool | None = None
     document_type: str = "tds"
     tds_title: str = ""
     tds_revision: str = ""
     tds_date: str = ""
     additional_info: dict = Field(default_factory=dict)
+    identifiers: dict = Field(default_factory=dict)
+    manufacturing: dict = Field(default_factory=dict)
+    supply_chain: dict = Field(default_factory=dict)
+    health_safety: dict = Field(default_factory=dict)
+    lifecycle: dict = Field(default_factory=dict)
 
 
 class SaveInput(BaseModel):
@@ -1069,6 +1148,7 @@ def manual_convert(payload: ManualInput):
     """Manual TDS-to-JSON conversion."""
     fields = payload.model_dump()
     fields["_extraction_method"] = "manual"
+    # Manual confidence means the value was transcribed exactly as entered, not independently verified.
     fields["confidence"] = {"overall": 100, "product_name": 100, "manufacturer": 100, "technical_properties": 100, "standards_compliance": 100}
     dpp = build_dpp(fields, payload.batch_number, payload.origin_country, payload.document_type)
     warnings = validate_dpp(dpp)
@@ -1151,7 +1231,7 @@ async def upload_extract(
         extracted["_extraction_method"] = method
         extracted["_source_file_name"] = file.filename
         extracted["_source_document_id"] = f"SRC-{date.today().strftime('%Y%m%d')}-{index}"
-        dpp = build_dpp(extracted, extracted.get("batch_number", ""), extracted.get("origin_country", "India"), detected_doc_type)
+        dpp = build_dpp(extracted, extracted.get("batch_number", ""), extracted.get("origin_country", ""), detected_doc_type)
         dpp["_source_file_name"] = file.filename
         drafts.append(dpp)
         warnings.extend(validate_dpp(dpp))
@@ -1211,7 +1291,7 @@ async def batch_upload(
             error = extracted.pop("_extraction_error", None)
             extracted["_extraction_method"] = method
 
-            dpp = build_dpp(extracted, extracted.get("batch_number", ""), extracted.get("origin_country", "India"), doc_type)
+            dpp = build_dpp(extracted, extracted.get("batch_number", ""), extracted.get("origin_country", ""), doc_type)
             warnings = validate_dpp(dpp)
             if error:
                 warnings.append(error)

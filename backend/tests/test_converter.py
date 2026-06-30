@@ -110,6 +110,38 @@ def test_manual_convert_missing_fields():
     assert len(data["warnings"]) > 0
 
 
+def test_manual_convert_preserves_unknown_values_and_structured_chain_data():
+    payload = {
+        "product_name": "Evidence Honest Product",
+        "manufacturer": "Example Manufacturer",
+        "identifiers": {"gtin": "8901234567890"},
+        "manufacturing": {"facility_name": "Plant A"},
+        "supply_chain": {"supplier": "Supplier One"},
+        "health_safety": {"sds_url": "https://example.test/sds.pdf"},
+        "lifecycle": {"recycling": "Separate clean packaging"},
+    }
+    res = client.post("/api/convert/manual", json=payload)
+    assert res.status_code == 200
+    dpp = res.json()["extracted_dpp"]
+
+    assert dpp["batch_info"] == {
+        "batch_number": "",
+        "production_date": "",
+        "origin_country": "",
+        "factory_location": "",
+    }
+    assert dpp["packaging_and_storage"]["shelf_life"]["value"] is None
+    assert dpp["sustainability"]["recycled_content_pct"] is None
+    assert dpp["sustainability"]["carbon_footprint"]["value"] is None
+    assert dpp["sustainability"]["recyclable"] is None
+    assert dpp["confidence"]["overall"] == 100
+    assert dpp["identifiers"]["gtin"] == "8901234567890"
+    assert dpp["manufacturing"]["facility_name"] == "Plant A"
+    assert dpp["supply_chain"]["supplier"] == "Supplier One"
+    assert dpp["health_safety"]["sds_url"].endswith("sds.pdf")
+    assert dpp["lifecycle"]["recycling"] == "Separate clean packaging"
+
+
 def test_save_and_list_and_delete():
     manual = client.post("/api/convert/manual", json={
         "product_name": "Pipeline Test Product",
@@ -375,6 +407,18 @@ def test_regex_fallback_extracts_labeled_tds_identity_and_table_rows():
         "Coverage 4-6 kg/m2 Calculated Varies\n"
         "Standards Compliance\n"
         "Designed as a sample specification referencing EN 12004, ISO 13007 and IS 15477.\n"
+        "Application Instructions\n"
+        "Mix with clean water, allow 5 minutes to slake, remix, apply using a notched trowel.\n"
+        "Surface Preparation\n"
+        "Substrates must be clean, sound, dry or SSD as appropriate, free from dust and oil.\n"
+        "Packaging, Storage & Shelf Life\n"
+        "20 kg moisture-resistant bags. Store unopened in a cool, dry location on pallets. Shelf life: 12 months.\n"
+        "Health & Safety\n"
+        "Wear gloves and eye protection. Refer to the Safety Data Sheet before handling.\n"
+        "Sustainability\n"
+        "Packaging is recyclable where facilities exist.\n"
+        "Manufacturer Contact\n"
+        "Email: technical@buildcore.example Phone: +91-1800-000-000\n"
     )
 
     assert extracted["product_name"] == "BuildBond X500 Polymer-Modified Tile Adhesive"
@@ -390,6 +434,27 @@ def test_regex_fallback_extracts_labeled_tds_identity_and_table_rows():
     assert extracted["confidence"]["overall"] >= 90
     assert extracted["confidence"]["product_name"] >= 90
     assert extracted["confidence"]["manufacturer"] >= 90
+    assert "notched trowel" in extracted["lifecycle"]["installation"]
+    assert extracted["shelf_life_months"] == 12
+    assert extracted["health_safety"]["sds_required"] is True
+    assert extracted["supply_chain"]["email"] == "technical@buildcore.example"
+
+
+def test_upload_does_not_invent_origin_when_source_has_no_origin():
+    res = _upload_pdf(
+        "Technical Data Sheet\n"
+        "Product: BuildBond X500 Polymer-Modified Tile Adhesive\n"
+        "Manufacturer: BuildCore Materials Pvt. Ltd.\n"
+        "Bulk density 1.45 g/cm3 Internal\n"
+        "Tensile adhesion strength 1.4 MPa EN 12004\n"
+        "Compressive strength 28 MPa Internal\n"
+        "Designed as a sample specification referencing EN 12004, ISO 13007 and IS 15477.\n",
+        "tds",
+    )
+
+    assert res.status_code == 200
+    dpp = res.json()["extracted_dpp"]
+    assert dpp["batch_info"]["origin_country"] == ""
 
 
 def test_gemini_friendly_error_includes_actionable_details():

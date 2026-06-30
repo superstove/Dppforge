@@ -22,16 +22,20 @@ export function ManualEntryView({
     category: '',
     description: '',
     batch_number: '',
-    origin_country: 'India',
+    origin_country: '',
     factory_location: '',
+    production_date: '',
     packaging: '',
     storage: '',
-    shelf_life_months: 12,
+    shelf_life_months: '',
     standards_compliance: '',
     applications: '',
     recycled_content_pct: '',
     carbon_footprint_value: '',
     carbon_footprint_unit: 'kgCO2e/unit',
+    gtin: '', sku: '', facility_name: '', supplier: '', manufacturer_contact: '',
+    sds_url: '', handling_guidance: '', installation: '', maintenance: '',
+    recycling: '', disposal: '', evidence_reference: '',
   });
 
   const [techProps, setTechProps] = useState([{ name: '', value: '', unit: '', test_method: '' }]);
@@ -73,13 +77,19 @@ export function ManualEntryView({
 
     const payload = {
       ...formData,
-      shelf_life_months: parseInt(String(formData.shelf_life_months)) || 12,
-      recycled_content_pct: parseFloat(String(formData.recycled_content_pct)) || 0,
-      carbon_footprint_value: parseFloat(String(formData.carbon_footprint_value)) || 0,
+      shelf_life_months: formData.shelf_life_months === '' ? null : Number(formData.shelf_life_months),
+      recycled_content_pct: formData.recycled_content_pct === '' ? null : Number(formData.recycled_content_pct),
+      carbon_footprint_value: formData.carbon_footprint_value === '' ? null : Number(formData.carbon_footprint_value),
       standards_compliance: formData.standards_compliance.split(',').map(s => s.trim()).filter(Boolean),
       applications: formData.applications.split(',').map(s => s.trim()).filter(Boolean),
       technical_properties,
       working_properties: {},
+      identifiers: { gtin: formData.gtin, sku: formData.sku },
+      manufacturing: { facility_name: formData.facility_name, production_date: formData.production_date },
+      supply_chain: { supplier: formData.supplier, manufacturer_contact: formData.manufacturer_contact },
+      health_safety: { sds_url: formData.sds_url, handling_guidance: formData.handling_guidance },
+      lifecycle: { installation: formData.installation, maintenance: formData.maintenance, recycling: formData.recycling, disposal: formData.disposal },
+      evidence_reference: formData.evidence_reference,
       ...(Object.keys(additional_info).length > 0 ? { additional_info } : {}),
     };
 
@@ -107,6 +117,30 @@ export function ManualEntryView({
       )}
       
       <form onSubmit={handleSubmit} className="space-y-8">
+        <div className="bg-[#1a1d27]/80 border border-[#2e3245] rounded-lg p-5 sm:p-8">
+          <h3 className="text-xl font-semibold text-white mb-6">Traceability & Evidence</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2">
+            <Input label="GTIN" name="gtin" value={formData.gtin} onChange={handleChange} placeholder="GS1 GTIN, if assigned" />
+            <Input label="SKU / Product Code" name="sku" value={formData.sku} onChange={handleChange} />
+            <Input label="Manufacturing Facility" name="facility_name" value={formData.facility_name} onChange={handleChange} />
+            <Input label="Supplier" name="supplier" value={formData.supplier} onChange={handleChange} />
+            <Input label="Manufacturer Contact" name="manufacturer_contact" value={formData.manufacturer_contact} onChange={handleChange} />
+            <Input label="Evidence Reference" name="evidence_reference" value={formData.evidence_reference} onChange={handleChange} placeholder="Document number, URL, or internal record" />
+          </div>
+        </div>
+
+        <div className="bg-[#1a1d27]/80 border border-[#2e3245] rounded-lg p-5 sm:p-8">
+          <h3 className="text-xl font-semibold text-white mb-6">Safety & Lifecycle</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2">
+            <Input label="SDS URL / Reference" name="sds_url" value={formData.sds_url} onChange={handleChange} />
+            <Input label="Handling Guidance" name="handling_guidance" value={formData.handling_guidance} onChange={handleChange} />
+            <Input label="Installation Guidance" name="installation" value={formData.installation} onChange={handleChange} />
+            <Input label="Maintenance Guidance" name="maintenance" value={formData.maintenance} onChange={handleChange} />
+            <Input label="Recycling Guidance" name="recycling" value={formData.recycling} onChange={handleChange} />
+            <Input label="Disposal Guidance" name="disposal" value={formData.disposal} onChange={handleChange} />
+          </div>
+        </div>
+
         <div className="bg-[#1a1d27]/80 backdrop-blur-sm border border-[#2e3245] rounded-2xl p-5 sm:p-8 shadow-lg">
           <h3 className="text-lg sm:text-xl font-semibold text-white mb-6 flex items-center">
             <span className="bg-white text-black w-6 h-6 rounded-full flex items-center justify-center text-sm mr-3">1</span> 
@@ -119,6 +153,7 @@ export function ManualEntryView({
             <Input label="Batch Number" name="batch_number" value={formData.batch_number} onChange={handleChange} placeholder="e.g. SIKA-GROUT-212" />
             <Input label="Origin Country" name="origin_country" value={formData.origin_country} onChange={handleChange} />
             <Input label="Factory Location" name="factory_location" value={formData.factory_location} onChange={handleChange} />
+            <Input label="Production Date" type="date" name="production_date" value={formData.production_date} onChange={handleChange} />
           </div>
           <div className="mt-2">
             <Textarea label="Description" name="description" value={formData.description} onChange={handleChange} placeholder="Brief product description" />

@@ -89,6 +89,38 @@ export function ReviewView({ setView, data, onSaved, sidebarCollapsed = false }:
     setDpp({ ...dpp, [section]: next });
   };
 
+  const handleRecordSectionChange = (
+    section: 'identifiers' | 'manufacturing' | 'supply_chain' | 'health_safety' | 'lifecycle',
+    key: string,
+    value: string,
+  ) => {
+    setDpp({
+      ...dpp,
+      [section]: {
+        ...((dpp[section] as Record<string, unknown>) || {}),
+        [key]: value,
+      },
+    });
+  };
+
+  const displayValue = (value: unknown) => {
+    if (value === undefined || value === null) return '';
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+    return JSON.stringify(value);
+  };
+
+  const chainSections: {
+    key: 'identifiers' | 'manufacturing' | 'supply_chain' | 'health_safety' | 'lifecycle';
+    title: string;
+    empty: string;
+  }[] = [
+    { key: 'identifiers', title: 'Product Identifiers', empty: 'No SKU, GTIN, lot, or serial identifiers captured yet.' },
+    { key: 'manufacturing', title: 'Manufacturing & Origin', empty: 'No factory, production, quantity, or origin details captured yet.' },
+    { key: 'supply_chain', title: 'Supply Chain & Contact', empty: 'No supplier, transport, or manufacturer contact details captured yet.' },
+    { key: 'health_safety', title: 'Health & Safety', empty: 'No hazard, SDS, or handling guidance captured yet.' },
+    { key: 'lifecycle', title: 'Lifecycle, Use & End Of Life', empty: 'No installation, maintenance, reuse, recycling, or disposal guidance captured yet.' },
+  ];
+
   const handleApprove = async () => {
     if (!dpp.product_name?.trim() || !dpp.manufacturer?.trim() || !dpp.category?.trim()) {
       setError('Product name, manufacturer, and category are required before approval.');
@@ -239,6 +271,42 @@ export function ReviewView({ setView, data, onSaved, sidebarCollapsed = false }:
                 <Input label="Category" value={dpp.category || ''} onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange('category', e.target.value)} />
                 <Input label="Batch Number" value={dpp.batch_info?.batch_number || ''} onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange('batch_info', e.target.value, 'batch_number')} />
               </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input label="Origin Country" value={dpp.batch_info?.origin_country || ''} onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange('batch_info', e.target.value, 'origin_country')} />
+                <Input label="Factory Location" value={dpp.batch_info?.factory_location || ''} onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange('batch_info', e.target.value, 'factory_location')} />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-[#1a1d27]/80 backdrop-blur-sm border border-[#2e3245] rounded-2xl p-5 sm:p-8 shadow-lg">
+            <h3 className="text-xl font-bold text-white mb-6">Traceability Chain</h3>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+              {chainSections.map(section => {
+                const values = (dpp[section.key] || {}) as Record<string, unknown>;
+                const entries = Object.entries(values);
+                return (
+                  <div key={section.key} className="bg-[#242736] border border-[#2e3245] rounded-xl p-4">
+                    <h4 className="text-sm font-bold text-white mb-3">{section.title}</h4>
+                    {entries.length > 0 ? (
+                      <div className="space-y-3">
+                        {entries.map(([key, value]) => (
+                          <label key={`${section.key}-${key}`} className="block">
+                            <span className="block text-xs font-semibold text-[#8b8fa3] mb-1">{key.replace(/_/g, ' ')}</span>
+                            <textarea
+                              value={displayValue(value)}
+                              onChange={(e) => handleRecordSectionChange(section.key, key, e.target.value)}
+                              rows={2}
+                              className="w-full bg-[#0f1117] border border-[#2e3245] rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-[#6366f1] resize-y"
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-[#8b8fa3]">{section.empty}</p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 

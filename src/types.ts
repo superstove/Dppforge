@@ -22,12 +22,12 @@ export interface DppJson {
   packaging_and_storage: {
     packaging: string;
     storage: string;
-    shelf_life: { value: number; unit: string; condition: string };
+    shelf_life: { value: number | null; unit: string; condition: string };
   };
   sustainability: {
-    recycled_content_pct: number;
-    carbon_footprint: { value: number; unit: string };
-    recyclable: boolean;
+    recycled_content_pct: number | null;
+    carbon_footprint: { value: number | null; unit: string };
+    recyclable: boolean | null;
   };
   batch_info: {
     batch_number: string;
