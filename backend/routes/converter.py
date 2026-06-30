@@ -307,13 +307,20 @@ def _extract_with_gemini(text: str, api_key: str, doc_type: str = "tds") -> dict
     try:
         import google.generativeai as genai
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(os.getenv("TDS_GEMINI_MODEL", "gemini-2.5-flash"))
-        resp = model.generate_content(_build_extraction_prompt(text, doc_type))
+        model_name = os.getenv("TDS_GEMINI_MODEL", "gemini-2.5-flash")
+        print(f"[GEMINI] Using model: {model_name}, key: {api_key[:8]}..., text length: {len(text)}")
+        model = genai.GenerativeModel(model_name)
+        resp = model.generate_content(
+            _build_extraction_prompt(text, doc_type),
+            generation_config={"temperature": 0.1, "max_output_tokens": 4000},
+        )
         raw = resp.text.strip()
         raw = re.sub(r"^```json\s*", "", raw)
         raw = re.sub(r"\s*```$", "", raw)
+        print(f"[GEMINI] Extraction succeeded, response length: {len(raw)}")
         return json.loads(raw)
     except Exception as e:
+        print(f"[GEMINI] Extraction failed: {type(e).__name__}: {e}")
         return {"_extraction_error": _friendly_error(e, "Gemini"), **_extract_with_regex(text)}
 
 
