@@ -20,9 +20,10 @@ export function ReviewView({ setView, data, onSaved, sidebarCollapsed = false }:
 
   const warnings = data.warnings || [];
   const isValid = warnings.length === 0;
-  const minimumConfidence = dpp.evidence?.minimum_confidence_required ?? 0;
+  const minimumConfidence = dpp.evidence?.minimum_confidence_required ?? 90;
   const overallConfidence = dpp.confidence?.overall ?? 0;
-  const blocksSave = false;
+  const hasConfidence = Boolean(dpp.confidence);
+  const blocksSave = hasConfidence && overallConfidence < minimumConfidence;
 
   useEffect(() => {
     loadQrPreview();
@@ -124,7 +125,7 @@ export function ReviewView({ setView, data, onSaved, sidebarCollapsed = false }:
       )}
 
       {/* Confidence Score Bar */}
-      {dpp.confidence && dpp.confidence.overall > 0 && (
+      {dpp.confidence && (
         <div className="bg-[#1a1d27]/80 border border-[#2e3245] rounded-2xl p-5 mb-8">
           <div className="flex items-center justify-between mb-3">
             <h4 className="text-sm font-semibold text-[#8b8fa3] uppercase tracking-wider">AI Extraction Confidence</h4>
