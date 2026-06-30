@@ -26,6 +26,7 @@ from main import app
 from fastapi.testclient import TestClient
 import fitz
 from routes.passports import _generate_dpp_pdf
+from routes import converter
 from routes.converter import _extract_with_regex, _friendly_error, _gemini_model_candidates
 from url_utils import public_app_base_url
 
@@ -112,6 +113,33 @@ def test_save_and_list_and_delete():
 def test_upload_rejects_non_pdf():
     res = client.post("/api/convert/upload", files={"file": ("test.txt", b"not a pdf", "text/plain")})
     assert res.status_code == 400
+
+
+def test_upload_returns_retryable_error_when_configured_ai_fails(monkeypatch):
+    document = fitz.open()
+    page = document.new_page()
+    page.insert_text((72, 72), "Test Product Technical Data Sheet\nManufacturer: Test Corp\nStrength: 40 MPa\nEN 206")
+    pdf_bytes = document.tobytes()
+    document.close()
+
+    monkeypatch.setenv("TDS_GEMINI_API_KEY", "configured-for-test")
+    monkeypatch.setattr(
+        converter,
+        "ai_extract_fields",
+        lambda _text, _doc_type: {
+            "_extraction_method": "regex_fallback",
+            "_extraction_error": "Gemini rate limit reached. Used regex fallback.",
+            "product_name": "Test Product Technical Data Sheet",
+        },
+    )
+
+    res = client.post(
+        "/api/convert/upload?doc_type=tds",
+        files={"file": ("test.pdf", pdf_bytes, "application/pdf")},
+    )
+
+    assert res.status_code == 503
+    assert res.json()["detail"] == "Gemini rate limit reached. Please retry the PDF extraction."
 
 
 def test_preview_qr():

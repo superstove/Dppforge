@@ -420,6 +420,10 @@ def _friendly_error(error: Exception, provider: str) -> str:
     return f"{provider} extraction failed. Used regex fallback."
 
 
+def _retryable_ai_error(error: str) -> str:
+    return error.replace("Used regex fallback.", "Please retry the PDF extraction.")
+
+
 def _infer_category(text: str) -> str:
     lowered = text.lower()
     rules = [
@@ -800,6 +804,8 @@ async def upload_extract(
     extracted = ai_extract_fields(raw_text, doc_type)
     method = extracted.pop("_extraction_method", "ai")
     error = extracted.pop("_extraction_error", None)
+    if error:
+        raise HTTPException(status_code=503, detail=_retryable_ai_error(error))
     extracted["_extraction_method"] = method
 
     dpp = build_dpp(extracted, extracted.get("batch_number", ""), extracted.get("origin_country", "India"), doc_type)
