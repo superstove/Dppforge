@@ -345,6 +345,10 @@ def _friendly_error(error: Exception, provider: str) -> str:
         return f"{provider} API key invalid. Used regex fallback."
     if "quota" in msg or "429" in msg:
         return f"{provider} rate limit reached. Used regex fallback."
+    if "404" in msg and "model" in msg:
+        return f"{provider} model unavailable. Check TDS_GEMINI_MODEL on Render. Used regex fallback."
+    if "deadline" in msg or "timeout" in msg or "timed out" in msg:
+        return f"{provider} request timed out. Check Render logs/network and try again. Used regex fallback."
     return f"{provider} extraction failed. Used regex fallback."
 
 
@@ -393,9 +397,32 @@ def _extract_with_regex(text: str) -> dict:
     extracted: dict[str, Any] = {}
     lines = text.split("\n")
 
+    def is_noise_line(value: str) -> bool:
+        lowered = value.strip().lower()
+        if not lowered:
+            return True
+        if re.fullmatch(r"-+\s*(ocr\s*)?page\s+\d+\s*-+", lowered):
+            return True
+        if lowered.startswith(("http", "www", "page ")):
+            return True
+        if lowered in {"technical data sheet", "product data sheet", "data sheet", "tds"}:
+            return True
+        return False
+
+    def looks_like_product_name(value: str) -> bool:
+        if is_noise_line(value):
+            return False
+        if len(value) < 4 or len(value) > 120:
+            return False
+        if re.search(r"[:=|]", value):
+            return False
+        if re.search(r"\d+\s*(mpa|mm|kg|g/m|%|hours?|minutes?)\b", value, re.IGNORECASE):
+            return False
+        return bool(re.search(r"[A-Za-z]{3,}", value))
+
     for line in lines[:10]:
         line = line.strip()
-        if line and len(line) > 3 and not line.startswith(("http", "www", "page", "Page", " ")):
+        if looks_like_product_name(line):
             extracted.setdefault("product_name", line)
             break
 

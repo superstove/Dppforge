@@ -26,6 +26,7 @@ from main import app
 from fastapi.testclient import TestClient
 import fitz
 from routes.passports import _generate_dpp_pdf
+from routes.converter import _extract_with_regex, _friendly_error
 from url_utils import public_app_base_url
 
 client = TestClient(app)
@@ -151,6 +152,47 @@ def test_save_rejects_low_confidence_passports():
 
     assert res.status_code == 422
     assert "90" in res.json()["detail"]
+
+
+def test_save_rejects_zero_confidence_regex_fallback_passports():
+    manual = client.post("/api/convert/manual", json={
+        "product_name": "Regex Fallback Product",
+        "manufacturer": "Test",
+        "category": "Geotextile",
+        "standards_compliance": ["EN 13249"],
+        "technical_properties": {"mass": {"value": 200, "unit": "g/m2"}},
+    })
+    dpp = manual.json()["extracted_dpp"]
+    dpp["confidence"]["overall"] = 0
+    dpp["source_document"]["conversion_method"] = "regex_fallback"
+
+    res = client.post("/api/convert/save", json={"dpp_json": dpp})
+
+    assert res.status_code == 422
+    assert "90" in res.json()["detail"]
+    assert "Current: 0%" in res.json()["detail"]
+
+
+def test_regex_fallback_does_not_use_page_markers_as_identity_fields():
+    extracted = _extract_with_regex(
+        "--- Page 1 ---\n"
+        "UltraTech Fixoblock Jointing Mortar\n"
+        "UltraTech Cement Ltd\n"
+        "Compressive strength: 7 MPa\n"
+        "EN 998-2\n"
+    )
+
+    assert extracted["product_name"] == "UltraTech Fixoblock Jointing Mortar"
+    assert extracted["manufacturer"] == "UltraTech"
+    assert extracted["category"] == "Block Jointing Mortar"
+    assert extracted["product_name"] != "--- Page 1 ---"
+
+
+def test_gemini_friendly_error_includes_actionable_details():
+    message = _friendly_error(RuntimeError("404 models/gemini-2.5-flash is not found"), "Gemini")
+
+    assert "model unavailable" in message
+    assert "TDS_GEMINI_MODEL" in message
 
 
 def test_saved_passport_contains_data_rights_evidence_and_audit_trail():
